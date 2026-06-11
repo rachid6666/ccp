@@ -35,7 +35,7 @@ The update is based on structured parsed lines only:
 
 - `code = 0` increases collected amount and success count.
 - `code = 1` increases failed amount, failed count, failed references, and failed months.
-- Raw failed line count alone does not classify a client as risky or blocked.
+- Raw failed line count and split failed reference count alone do not classify a client as risky or blocked.
 
 ## Privacy Boundary
 

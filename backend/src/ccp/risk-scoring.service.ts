@@ -28,11 +28,8 @@ export class RiskScoringService {
     // Base score from failed amount
     score += client.totalFailedAmount / 1000;
 
-    // Failed references penalty
-    score += client.uniqueFailedReferences * 8;
-
     // Failed months penalty
-    score += client.failedMonthsCount * 12;
+    score += client.failedMonthsCount * 15;
 
     // Recent failure penalty
     if (client.lastFailureDate) {
@@ -87,8 +84,7 @@ export class RiskScoringService {
 
     return (
       client.totalFailedAmount >= 20000 ||
-      client.uniqueFailedReferences >= 3 ||
-      client.failedMonthsCount >= 2 ||
+      client.failedMonthsCount > 3 ||
       (failureRateByAmount >= 60 && client.totalFailedAmount >= 10000)
     );
   }
@@ -96,8 +92,7 @@ export class RiskScoringService {
   classifyBlockCandidate(client: RiskClientData): boolean {
     return (
       client.totalFailedAmount >= 50000 ||
-      client.uniqueFailedReferences >= 5 ||
-      client.failedMonthsCount >= 3 ||
+      client.failedMonthsCount > 3 ||
       (client.totalCollectedAmount === 0 && client.totalFailedAmount >= 20000)
     );
   }

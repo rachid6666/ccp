@@ -244,14 +244,12 @@ CLIENT_ACCOUNT NAME              AMOUNT   DATE       CCP_ACCOUNT CODE DELAY REFE
 
 **Risky**: Any of:
 - `failedAmount >= 20,000 DA`
-- `uniqueFailedReferences >= 3`
-- `failedMonthsCount >= 2`
+- `failedMonthsCount > 3`
 - `failureRate >= 60% AND failedAmount >= 10,000 DA`
 
 **Block Candidate**: Any of:
 - `failedAmount >= 50,000 DA`
-- `uniqueFailedReferences >= 5`
-- `failedMonthsCount >= 3`
+- `failedMonthsCount > 3`
 - `collectedAmount = 0 AND failedAmount >= 20,000 DA`
 
 ### Risk Score Calculation
@@ -259,8 +257,7 @@ CLIENT_ACCOUNT NAME              AMOUNT   DATE       CCP_ACCOUNT CODE DELAY REFE
 ```
 score =
   failedAmount / 1000 +
-  uniqueFailedReferences * 8 +
-  failedMonthsCount * 12 +
+  failedMonthsCount * 15 +
   recentFailurePenalty +
   noSuccessPenalty -
   collectedAmount / 5000

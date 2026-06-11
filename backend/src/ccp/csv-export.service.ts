@@ -263,9 +263,6 @@ export class CsvExportService {
     if (client.totalFailedAmount >= 50000) {
       return 'Montant échoué critique';
     }
-    if (client.uniqueFailedReferences >= 5) {
-      return 'Nombre élevé de références échouées';
-    }
-    return 'Échecs sur plusieurs mois';
+    return 'Échecs sur plus de 3 mois';
   }
 }

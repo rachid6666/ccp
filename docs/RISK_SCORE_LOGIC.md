@@ -25,8 +25,7 @@ failedAmount > 0 DA
 
 **Any of these conditions**:
 - `failedAmount >= 20,000 DA`
-- `uniqueFailedReferences >= 3` (failed 3+ different invoices)
-- `failedMonthsCount >= 2` (failures in 2+ different months)
+- `failedMonthsCount > 3` (failures in more than 3 different months)
 - `failureRateByAmount >= 60% AND failedAmount >= 10,000 DA`
 
 **Action**: Requires management attention and careful monitoring
@@ -38,8 +37,7 @@ failedAmount > 0 DA
 
 **Any of these conditions**:
 - `failedAmount >= 50,000 DA`
-- `uniqueFailedReferences >= 5` (failed 5+ different invoices)
-- `failedMonthsCount >= 3` (failures in 3+ different months)
+- `failedMonthsCount > 3` (failures in more than 3 different months)
 - `collectedAmount = 0 AND failedAmount >= 20,000 DA` (all-failed customer)
 
 **Action**: Block all new payment facilities until current debts resolved
@@ -53,8 +51,7 @@ failedAmount > 0 DA
 ```
 score =
   (failedAmount / 1000) +
-  (uniqueFailedReferences * 8) +
-  (failedMonthsCount * 12) +
+  (failedMonthsCount * 15) +
   recentFailurePenalty +
   noSuccessPenalty -
   (collectedAmount / 5000)
@@ -71,29 +68,18 @@ failedAmount / 1000
 - **Purpose**: Direct correlation to financial risk
 - **Example**: 50,000 DA failed = +50 points
 
-#### 2. Unique Failed References Component
+#### 2. Failed Months Component
 ```
-uniqueFailedReferences * 8
-```
-
-- **Range**: 0 to 80+ (before clamping)
-- **Purpose**: Shows pattern across multiple invoices
-- **Weight**: 8 points per distinct invoice
-- **Example**: 5 failed invoices = +40 points
-- **Prevents**: False positives from single echéance split into multiple lines
-
-#### 3. Failed Months Component
-```
-failedMonthsCount * 12
+failedMonthsCount * 15
 ```
 
 - **Range**: 0 to 36+ (before clamping)
 - **Purpose**: Shows persistence of problems across time
-- **Weight**: 12 points per failed month
-- **Example**: Failures in Jan, Feb, Mar = +36 points
+- **Weight**: 15 points per failed month
+- **Example**: Failures in Jan, Feb, Mar, Apr = +60 points
 - **Important**: One problem month < multiple months of problems
 
-#### 4. Recent Failure Penalty
+#### 3. Recent Failure Penalty
 ```
 if (daysSinceLastFailure <= 30) +15
 else if (daysSinceLastFailure <= 60) +10
@@ -105,7 +91,7 @@ else 0
 - **Max Penalty**: +15 points
 - **Example**: Failure last week = +15, failure 6 months ago = 0
 
-#### 5. No Success Penalty
+#### 4. No Success Penalty
 ```
 if (collectedAmount = 0 AND failedAmount >= 10,000) +20
 else 0
@@ -118,7 +104,7 @@ else 0
 - **Max Penalty**: +20 points
 - **Example**: 0 collected, 30,000 DA failed = +20
 
-#### 6. Success Mitigation Factor
+#### 5. Success Mitigation Factor
 ```
 -(collectedAmount / 5000)
 ```
@@ -161,33 +147,52 @@ score = Math.max(0, Math.min(100, score))
 
 **Calculation**:
 ```
-score = (5000/1000) + (1*8) + (1*12) + 0 + 0 - (95000/5000)
-score = 5 + 8 + 12 + 0 + 0 - 19
-score = 6
+score = (5000/1000) + (1*15) + 0 + 0 - (95000/5000)
+score = 5 + 15 + 0 + 0 - 19
+score = 1
 ```
 
 **Result**: FAIBLE (Low Risk) ✓
 
-### Example 2: Medium-Risk Client
+### Example 2: Split References In One Month
+
+**Client Data**:
+- totalAttemptedAmount: 10,000 DA
+- totalCollectedAmount: 7,500 DA
+- totalFailedAmount: 2,500 DA
+- uniqueFailedReferences: 5 (same month split into 5 parts)
+- failedMonthsCount: 1
+- lastFailureDate: 15 days ago
+
+**Calculation**:
+```
+score = (2500/1000) + (1*15) + 15 + 0 - (7500/5000)
+score = 2.5 + 15 + 15 + 0 - 1.5
+score = 31
+```
+
+**Result**: MOYEN score, but not RISKY/BLOCKED from references alone ✓
+
+### Example 3: Multi-Month Bad Client
 
 **Client Data**:
 - totalAttemptedAmount: 80,000 DA
 - totalCollectedAmount: 50,000 DA
 - totalFailedAmount: 30,000 DA
-- uniqueFailedReferences: 3
-- failedMonthsCount: 2
+- uniqueFailedReferences: 8
+- failedMonthsCount: 4
 - lastFailureDate: 15 days ago
 
 **Calculation**:
 ```
-score = (30000/1000) + (3*8) + (2*12) + 15 + 0 - (50000/5000)
-score = 30 + 24 + 24 + 15 + 0 - 10
-score = 83 → Clamped to 100, but reflects CRITIQUE
+score = (30000/1000) + (4*15) + 15 + 0 - (50000/5000)
+score = 30 + 60 + 15 + 0 - 10
+score = 95
 ```
 
 **Result**: CRITIQUE (Critical Risk) ⚠️
 
-### Example 3: Block-Worthy Client
+### Example 4: Block-Worthy Client
 
 **Client Data**:
 - totalAttemptedAmount: 70,000 DA
@@ -199,24 +204,24 @@ score = 83 → Clamped to 100, but reflects CRITIQUE
 
 **Calculation**:
 ```
-score = (70000/1000) + (6*8) + (3*12) + 15 + 20 - (0/5000)
-score = 70 + 48 + 36 + 15 + 20 - 0
-score = 189 → Clamped to 100
+score = (70000/1000) + (3*15) + 15 + 20 - (0/5000)
+score = 70 + 45 + 15 + 20 - 0
+score = 150 → Clamped to 100
 ```
 
 **Result**: CRITIQUE, Block Candidate ⛔
 
 ## Important Considerations
 
-### Why Line Count Doesn't Matter
+### Why Line And Split Reference Count Don't Matter
 
-❌ **WRONG**: "Client has 5 failed lines → risky"
+❌ **WRONG**: "Client has 5 failed lines or 5 split references → risky"
 
-**Reason**: One échéance can be split into 5+ lines for partial payments
+**Reason**: One échéance/month can be split into 5 lines or references for partial recovery
 - Last line might be only 500 DA
-- Raw count creates false positives
+- Raw count and reference count create false positives
 
-✅ **RIGHT**: "Client has 25,000 DA failed across 3 distinct invoices over 2 months → risky"
+✅ **RIGHT**: "Client has failed payments across more than 3 different months → risky"
 
 ### Why Amount Matters
 
@@ -271,17 +276,13 @@ BLOCK_AMOUNT_THRESHOLD = 50000;
 
 // Scoring weights
 AMOUNT_WEIGHT = 1000;
-REFERENCE_WEIGHT = 8;
-MONTH_WEIGHT = 12;
+MONTH_WEIGHT = 15;
 RECENT_PENALTY = 15;
 NO_SUCCESS_PENALTY = 20;
 SUCCESS_MITIGATION = 5000;
 
-// Reference/Month limits
-RISKY_REFERENCES_THRESHOLD = 3;
-RISKY_MONTHS_THRESHOLD = 2;
-BLOCK_REFERENCES_THRESHOLD = 5;
-BLOCK_MONTHS_THRESHOLD = 3;
+// Month limit
+BAD_CLIENT_MONTHS_THRESHOLD = 3; // risky/block when failedMonthsCount > 3
 ```
 
 ## Reports Using Risk Scores

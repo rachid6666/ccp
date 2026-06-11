@@ -69,26 +69,27 @@ describe('RiskScoringService', () => {
     expect(service.classifyRisky(client)).toBe(true);
   });
 
-  it('should classify as risky when uniqueFailedReferences >= 3', () => {
+  it('should NOT classify as risky when one month is split into multiple references', () => {
     const client = {
       clientAccountHash: 'hash1',
       clientAccountMask: '****5172',
       clientName: 'Test Client',
       clientNameNorm: 'test client',
       totalAttemptedAmount: 10000,
-      totalCollectedAmount: 8000,
-      totalFailedAmount: 2000,
-      successLineCount: 2,
-      failedLineCount: 2,
-      uniqueFailedReferences: 3,
+      totalCollectedAmount: 7500,
+      totalFailedAmount: 2500,
+      successLineCount: 1,
+      failedLineCount: 5,
+      uniqueFailedReferences: 5,
       failedMonthsCount: 1,
       lastFailureDate: new Date(),
     };
 
-    expect(service.classifyRisky(client)).toBe(true);
+    expect(service.classifyRisky(client)).toBe(false);
+    expect(service.classifyBlockCandidate(client)).toBe(false);
   });
 
-  it('should classify as risky when failedMonthsCount >= 2', () => {
+  it('should classify as risky when failedMonthsCount > 3', () => {
     const client = {
       clientAccountHash: 'hash1',
       clientAccountMask: '****5172',
@@ -100,11 +101,31 @@ describe('RiskScoringService', () => {
       successLineCount: 2,
       failedLineCount: 2,
       uniqueFailedReferences: 1,
-      failedMonthsCount: 2,
+      failedMonthsCount: 4,
       lastFailureDate: new Date(),
     };
 
     expect(service.classifyRisky(client)).toBe(true);
+  });
+
+  it('should NOT classify as risky when failedMonthsCount is 3 or less', () => {
+    const client = {
+      clientAccountHash: 'hash1',
+      clientAccountMask: '****5172',
+      clientName: 'Test Client',
+      clientNameNorm: 'test client',
+      totalAttemptedAmount: 10000,
+      totalCollectedAmount: 8000,
+      totalFailedAmount: 2000,
+      successLineCount: 2,
+      failedLineCount: 2,
+      uniqueFailedReferences: 5,
+      failedMonthsCount: 3,
+      lastFailureDate: new Date(),
+    };
+
+    expect(service.classifyRisky(client)).toBe(false);
+    expect(service.classifyBlockCandidate(client)).toBe(false);
   });
 
   it('should classify as block candidate when failed amount >= 50000', () => {
