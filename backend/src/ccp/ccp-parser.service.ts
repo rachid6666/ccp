@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { UtilsService } from '@/common/utils.service';
+import { UtilsService } from '../common/utils.service';
 
 export interface ParsedCcpLine {
   isValid: boolean;

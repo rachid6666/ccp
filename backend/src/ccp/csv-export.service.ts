@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { RiskClientData, RiskScoringService } from './risk-scoring.service';
 
 interface ClientExportRow extends RiskClientData {

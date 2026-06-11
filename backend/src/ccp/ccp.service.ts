@@ -1,8 +1,8 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { CcpParserService } from './ccp-parser.service';
 import { RiskScoringService } from './risk-scoring.service';
-import { UtilsService } from '@/common/utils.service';
+import { UtilsService } from '../common/utils.service';
 import { CsvExportService } from './csv-export.service';
 import { Decimal } from '@prisma/client/runtime/library';
 
