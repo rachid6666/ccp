@@ -1,0 +1,137 @@
+// prisma/schema.prisma
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model UploadLead {
+  id                Int      @id @default(autoincrement())
+  showroomName      String
+  phone             String?
+  wilaya            String?
+  consentAccepted   Boolean
+  consentAcceptedAt DateTime?
+  createdAt         DateTime @default(now())
+
+  sessions          AnalysisSession[]
+
+  @@index([createdAt])
+}
+
+model AnalysisSession {
+  id                    Int      @id @default(autoincrement())
+  leadId                Int
+  accessTokenHash       String   @unique
+  uploadedAt            DateTime @default(now())
+
+  fileCount             Int
+  totalLines            Int
+  invalidLines          Int
+
+  attemptedAmount       Decimal  @db.Decimal(14, 2)
+  collectedAmount       Decimal  @db.Decimal(14, 2)
+  failedAmount          Decimal  @db.Decimal(14, 2)
+
+  successCount          Int
+  failedCount           Int
+  collectionRate        Decimal  @db.Decimal(5, 2)
+
+  uniqueClientCount     Int
+  failedClientCount     Int
+  followUpClientCount   Int
+  riskyClientCount      Int
+  blockCandidateCount   Int
+
+  lead                  UploadLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  files                 UploadedFile[]
+  lines                 CcpLine[]
+
+  @@index([uploadedAt])
+  @@index([accessTokenHash])
+}
+
+model UploadedFile {
+  id                Int      @id @default(autoincrement())
+  sessionId         Int
+  filename          String
+  originalFilename  String
+  uploadedAt        DateTime @default(now())
+
+  totalLines        Int
+  invalidLines      Int
+  attemptedAmount   Decimal  @db.Decimal(14, 2)
+  collectedAmount   Decimal  @db.Decimal(14, 2)
+  failedAmount      Decimal  @db.Decimal(14, 2)
+  successCount      Int
+  failedCount       Int
+
+  session           AnalysisSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  lines             CcpLine[]
+
+  @@index([sessionId])
+}
+
+model CcpLine {
+  id                Int      @id @default(autoincrement())
+  sessionId         Int
+  fileId            Int
+
+  clientAccountHash String
+  clientAccountMask String
+  clientName        String
+  clientNameNorm    String
+
+  amount            Decimal  @db.Decimal(14, 2)
+  operationDate     DateTime
+  ccpAccount        String
+  code              Int
+  delayDays         Int
+  reference         String
+  cleanReference    String
+  rawLine           String?
+
+  session           AnalysisSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  file              UploadedFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([fileId])
+  @@index([clientAccountHash])
+  @@index([operationDate])
+  @@index([code])
+  @@index([cleanReference])
+}
+
+model GlobalRiskClient {
+  id                    Int      @id @default(autoincrement())
+  clientAccountHash      String   @unique
+  clientNameHash         String?
+
+  firstSeenAt            DateTime @default(now())
+  lastSeenAt             DateTime @default(now())
+
+  seenInSessions         Int      @default(0)
+  seenInWilayas          String[]
+
+  totalAttemptedAmount   Decimal  @db.Decimal(14, 2)
+  totalCollectedAmount   Decimal  @db.Decimal(14, 2)
+  totalFailedAmount      Decimal  @db.Decimal(14, 2)
+
+  successLineCount       Int
+  failedLineCount        Int
+
+  uniqueFailedReferences Int
+  failedMonthsCount      Int
+  lastFailureDate        DateTime?
+
+  riskScore              Int
+  riskLevel              String
+
+  @@index([clientAccountHash])
+  @@index([riskLevel])
+  @@index([riskScore])
+}

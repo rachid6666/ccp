@@ -1,0 +1,258 @@
+.upload-page {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+  padding: 40px 20px;
+}
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.upload-card {
+  background: white;
+  border-radius: 8px;
+  padding: 40px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.upload-card h1 {
+  margin: 0 0 30px 0;
+  font-size: 2rem;
+  color: #333;
+}
+
+.form-group {
+  margin-bottom: 25px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #333;
+}
+
+.form-group input[type='text'],
+.form-group input[type='tel'] {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+.form-group input[type='text']:focus,
+.form-group input[type='tel']:focus {
+  outline: none;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+
+.file-input-wrapper {
+  position: relative;
+  display: block;
+}
+
+.file-input-wrapper input[type='file'] {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.file-input-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 40px;
+  border: 2px dashed #0f766e;
+  border-radius: 6px;
+  background-color: #f9f9f9;
+  font-weight: 500;
+  color: #0f766e;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.file-input-wrapper input:hover ~ .file-input-label {
+  background-color: #ecfdf5;
+}
+
+.file-hint {
+  margin: 8px 0 0 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.preview-summary {
+  background-color: #f9f9f9;
+  padding: 20px;
+  border-radius: 6px;
+  margin-bottom: 25px;
+}
+
+.preview-summary h3 {
+  margin: 0 0 15px 0;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+}
+
+.preview-item {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  background: white;
+  border-radius: 4px;
+}
+
+.preview-item span {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 5px;
+}
+
+.preview-item strong {
+  font-size: 1.2rem;
+  color: #333;
+}
+
+.consent-section {
+  background-color: #f9f9f9;
+  padding: 25px;
+  border-radius: 6px;
+  margin-bottom: 25px;
+}
+
+.consent-section h3 {
+  margin: 0 0 15px 0;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.consent-text {
+  background: white;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.consent-text p {
+  margin: 0 0 10px 0;
+  font-size: 0.95rem;
+  color: #555;
+  line-height: 1.5;
+}
+
+.consent-text p:last-child {
+  margin-bottom: 0;
+}
+
+.consent-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.consent-checkbox input {
+  margin-top: 4px;
+  cursor: pointer;
+}
+
+.consent-note {
+  font-size: 0.85rem;
+  color: #666;
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px solid #ddd;
+}
+
+.error-message {
+  background-color: #fee;
+  color: #c33;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  border-left: 4px solid #c33;
+}
+
+.upload-progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  color: #164e63;
+}
+
+.upload-progress-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #d9e5e2;
+}
+
+.upload-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #0f766e;
+  transition: width 0.2s ease;
+}
+
+.submit-button {
+  width: 100%;
+  padding: 14px;
+  background-color: #164e63;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.submit-button:hover:not(:disabled) {
+  background-color: #0f766e;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.25);
+}
+
+.submit-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .upload-card {
+    padding: 25px;
+  }
+
+  .upload-card h1 {
+    font-size: 1.5rem;
+  }
+
+  .file-input-label {
+    padding: 25px;
+  }
+
+  .preview-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
