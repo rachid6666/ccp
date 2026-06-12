@@ -71,9 +71,7 @@ export const apiService = {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
 
-    const response = await api.post('/ccp/preview', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    const response = await api.post('/ccp/preview', formData);
     return response.data;
   },
 
@@ -93,7 +91,6 @@ export const apiService = {
     formData.append('consentAccepted', String(consentAccepted));
 
     const response = await api.post('/ccp/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: progressEvent => {
         if (!onProgress || !progressEvent.total) return;
         onProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
