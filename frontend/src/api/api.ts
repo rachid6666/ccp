@@ -10,6 +10,17 @@ const api = axios.create({
   timeout: 60000,
 });
 
+function buildApiUrl(endpoint: string, params: Record<string, string>): string {
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = new URL(`${API_URL}${normalizedEndpoint}`);
+
+  Object.entries(params).forEach(([key, value]) => {
+    url.searchParams.set(key, value);
+  });
+
+  return url.toString();
+}
+
 export interface PreviewResponse {
   fileCount: number;
   totalLines: number;
@@ -46,19 +57,13 @@ export interface SessionResult {
 }
 
 async function downloadCsv(endpoint: string, token: string, filename: string): Promise<void> {
-  const response = await api.get(endpoint, {
-    params: { token },
-    responseType: 'blob',
-  });
-
-  const url = window.URL.createObjectURL(new Blob([response.data]));
   const link = document.createElement('a');
-  link.href = url;
+  link.href = buildApiUrl(endpoint, { token });
   link.setAttribute('download', filename);
+  link.rel = 'noopener';
   document.body.appendChild(link);
   link.click();
   link.parentNode?.removeChild(link);
-  window.URL.revokeObjectURL(url);
 }
 
 export const apiService = {

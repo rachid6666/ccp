@@ -78,7 +78,7 @@ export const UploadPage: React.FC = () => {
       );
 
       // Redirect to result page
-      navigate(`/result?token=${result.accessToken}`);
+      navigate(`/result?token=${encodeURIComponent(result.accessToken)}`);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Erreur lors du téléchargement des fichiers');
     } finally {
