@@ -7,7 +7,7 @@ const API_URL = rawApiUrl.replace(/\/$/, '').endsWith('/api')
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 60000,
+  timeout: 300000,
 });
 
 function buildApiUrl(endpoint: string, params: Record<string, string>): string {

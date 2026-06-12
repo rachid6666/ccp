@@ -80,7 +80,13 @@ export const UploadPage: React.FC = () => {
       // Redirect to result page
       navigate(`/result?token=${encodeURIComponent(result.accessToken)}`);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du téléchargement des fichiers');
+      if (err.code === 'ECONNABORTED') {
+        setError(
+          "Le traitement prend plus de temps que prévu. Veuillez réessayer avec moins de fichiers ou vérifier les résultats plus tard.",
+        );
+      } else {
+        setError(err.response?.data?.message || 'Erreur lors du téléchargement des fichiers');
+      }
     } finally {
       setLoading(false);
     }
