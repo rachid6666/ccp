@@ -344,7 +344,7 @@ export class CcpService {
       },
     });
 
-    void this.upsertGlobalRiskClients(clientStats, wilaya).catch(error => {
+    await this.upsertGlobalRiskClients(clientStats, wilaya).catch(error => {
       console.error('Global risk update failed after upload', error);
     });
 
