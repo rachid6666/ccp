@@ -81,104 +81,131 @@ export class CcpController {
   }
 
   @Get('download/summary.csv')
-  async downloadSummary(
-    @Query('token') token: string,
-    @Res() res: Response,
-  ) {
+  async downloadSummary(@Query('token') token: string, @Res() res: Response) {
     if (!token) {
       throw new BadRequestException('Token is required');
     }
     const csv = await this.ccpService.downloadSummaryCsv(token);
-    res.header('Content-Type', 'text/csv; charset=utf-8');
-    res.header(
-      'Content-Disposition',
-      'attachment; filename="resume.csv"',
-    );
-    res.send(csv);
+    this.sendCsv(res, csv, 'resume.csv');
+  }
+
+  @Get('download/summary.xls')
+  async downloadSummaryXls(@Query('token') token: string, @Res() res: Response) {
+    if (!token) {
+      throw new BadRequestException('Token is required');
+    }
+    const xls = await this.ccpService.downloadSummaryXls(token);
+    this.sendXls(res, xls, 'resume.xls');
   }
 
   @Get('download/failed_clients.csv')
-  async downloadFailedClients(
-    @Query('token') token: string,
-    @Res() res: Response,
-  ) {
+  async downloadFailedClients(@Query('token') token: string, @Res() res: Response) {
     if (!token) {
       throw new BadRequestException('Token is required');
     }
     const csv = await this.ccpService.downloadFailedClientsCsv(token);
-    res.header('Content-Type', 'text/csv; charset=utf-8');
-    res.header(
-      'Content-Disposition',
-      'attachment; filename="clients_echoues.csv"',
-    );
-    res.send(csv);
+    this.sendCsv(res, csv, 'clients_echoues.csv');
+  }
+
+  @Get('download/failed_clients.xls')
+  async downloadFailedClientsXls(@Query('token') token: string, @Res() res: Response) {
+    if (!token) {
+      throw new BadRequestException('Token is required');
+    }
+    const xls = await this.ccpService.downloadFailedClientsXls(token);
+    this.sendXls(res, xls, 'clients_echoues.xls');
   }
 
   @Get('download/follow_up.csv')
-  async downloadFollowUp(
-    @Query('token') token: string,
-    @Res() res: Response,
-  ) {
+  async downloadFollowUp(@Query('token') token: string, @Res() res: Response) {
     if (!token) {
       throw new BadRequestException('Token is required');
     }
     const csv = await this.ccpService.downloadFollowUpCsv(token);
-    res.header('Content-Type', 'text/csv; charset=utf-8');
-    res.header(
-      'Content-Disposition',
-      'attachment; filename="clients_suivi.csv"',
-    );
-    res.send(csv);
+    this.sendCsv(res, csv, 'clients_suivi.csv');
+  }
+
+  @Get('download/follow_up.xls')
+  async downloadFollowUpXls(@Query('token') token: string, @Res() res: Response) {
+    if (!token) {
+      throw new BadRequestException('Token is required');
+    }
+    const xls = await this.ccpService.downloadFollowUpXls(token);
+    this.sendXls(res, xls, 'clients_suivi.xls');
   }
 
   @Get('download/risky_clients.csv')
-  async downloadRiskyClients(
-    @Query('token') token: string,
-    @Res() res: Response,
-  ) {
+  async downloadRiskyClients(@Query('token') token: string, @Res() res: Response) {
     if (!token) {
       throw new BadRequestException('Token is required');
     }
     const csv = await this.ccpService.downloadRiskyClientsCsv(token);
-    res.header('Content-Type', 'text/csv; charset=utf-8');
-    res.header(
-      'Content-Disposition',
-      'attachment; filename="clients_risque.csv"',
-    );
-    res.send(csv);
+    this.sendCsv(res, csv, 'clients_risque.csv');
+  }
+
+  @Get('download/risky_clients.xls')
+  async downloadRiskyClientsXls(@Query('token') token: string, @Res() res: Response) {
+    if (!token) {
+      throw new BadRequestException('Token is required');
+    }
+    const xls = await this.ccpService.downloadRiskyClientsXls(token);
+    this.sendXls(res, xls, 'clients_risque.xls');
   }
 
   @Get('download/block_list.csv')
-  async downloadBlockList(
-    @Query('token') token: string,
-    @Res() res: Response,
-  ) {
+  async downloadBlockList(@Query('token') token: string, @Res() res: Response) {
     if (!token) {
       throw new BadRequestException('Token is required');
     }
     const csv = await this.ccpService.downloadBlockListCsv(token);
-    res.header('Content-Type', 'text/csv; charset=utf-8');
-    res.header(
-      'Content-Disposition',
-      'attachment; filename="liste_blocage.csv"',
-    );
-    res.send(csv);
+    this.sendCsv(res, csv, 'liste_blocage.csv');
+  }
+
+  @Get('download/block_list.xls')
+  async downloadBlockListXls(@Query('token') token: string, @Res() res: Response) {
+    if (!token) {
+      throw new BadRequestException('Token is required');
+    }
+    const xls = await this.ccpService.downloadBlockListXls(token);
+    this.sendXls(res, xls, 'liste_blocage.xls');
   }
 
   @Get('download/all_clean.csv')
-  async downloadAllClean(
-    @Query('token') token: string,
-    @Res() res: Response,
-  ) {
+  async downloadAllClean(@Query('token') token: string, @Res() res: Response) {
     if (!token) {
       throw new BadRequestException('Token is required');
     }
     const csv = await this.ccpService.downloadAllCleanCsv(token);
+    this.sendCsv(res, csv, 'toutes_lignes_nettoyees.csv');
+  }
+
+  @Get('download/all_clean.xls')
+  async downloadAllCleanXls(@Query('token') token: string, @Res() res: Response) {
+    if (!token) {
+      throw new BadRequestException('Token is required');
+    }
+    const xls = await this.ccpService.downloadAllCleanXls(token);
+    this.sendXls(res, xls, 'toutes_lignes_nettoyees.xls');
+  }
+
+  @Get('admin/download/global-risk.xls')
+  async downloadGlobalRiskXls(
+    @Query('adminToken') adminToken: string,
+    @Res() res: Response,
+  ) {
+    const xls = await this.ccpService.downloadGlobalRiskXls(adminToken);
+    this.sendXls(res, xls, 'global_risk_clients.xls');
+  }
+
+  private sendCsv(res: Response, csv: string, filename: string): void {
     res.header('Content-Type', 'text/csv; charset=utf-8');
-    res.header(
-      'Content-Disposition',
-      'attachment; filename="toutes_lignes_nettoyees.csv"',
-    );
+    res.header('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
+  }
+
+  private sendXls(res: Response, xls: string, filename: string): void {
+    res.header('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
+    res.header('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(xls);
   }
 }

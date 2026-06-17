@@ -56,7 +56,7 @@ export interface SessionResult {
   blockCandidateCount: number;
 }
 
-async function downloadCsv(endpoint: string, token: string, filename: string): Promise<void> {
+async function downloadFile(endpoint: string, token: string, filename: string): Promise<void> {
   const link = document.createElement('a');
   link.href = buildApiUrl(endpoint, { token });
   link.setAttribute('download', filename);
@@ -106,43 +106,43 @@ export const apiService = {
     return response.data;
   },
 
-  async downloadCsv(endpoint: string, token: string, filename: string): Promise<void> {
-    return downloadCsv(endpoint, token, filename);
+  async downloadFile(endpoint: string, token: string, filename: string): Promise<void> {
+    return downloadFile(endpoint, token, filename);
   },
 
-  async downloadSummaryCsv(token: string): Promise<void> {
-    return downloadCsv('/ccp/download/summary.csv', token, 'resume.csv');
+  async downloadSummaryXls(token: string): Promise<void> {
+    return downloadFile('/ccp/download/summary.xls', token, 'resume.xls');
   },
 
-  async downloadFailedClientsCsv(token: string): Promise<void> {
-    return downloadCsv(
-      '/ccp/download/failed_clients.csv',
+  async downloadFailedClientsXls(token: string): Promise<void> {
+    return downloadFile(
+      '/ccp/download/failed_clients.xls',
       token,
-      'clients_echoues.csv',
+      'clients_echoues.xls',
     );
   },
 
-  async downloadFollowUpCsv(token: string): Promise<void> {
-    return downloadCsv('/ccp/download/follow_up.csv', token, 'clients_suivi.csv');
+  async downloadFollowUpXls(token: string): Promise<void> {
+    return downloadFile('/ccp/download/follow_up.xls', token, 'clients_suivi.xls');
   },
 
-  async downloadRiskyClientsCsv(token: string): Promise<void> {
-    return downloadCsv(
-      '/ccp/download/risky_clients.csv',
+  async downloadRiskyClientsXls(token: string): Promise<void> {
+    return downloadFile(
+      '/ccp/download/risky_clients.xls',
       token,
-      'clients_risque.csv',
+      'clients_risque.xls',
     );
   },
 
-  async downloadBlockListCsv(token: string): Promise<void> {
-    return downloadCsv('/ccp/download/block_list.csv', token, 'liste_blocage.csv');
+  async downloadBlockListXls(token: string): Promise<void> {
+    return downloadFile('/ccp/download/block_list.xls', token, 'liste_blocage.xls');
   },
 
-  async downloadAllCleanCsv(token: string): Promise<void> {
-    return downloadCsv(
-      '/ccp/download/all_clean.csv',
+  async downloadAllCleanXls(token: string): Promise<void> {
+    return downloadFile(
+      '/ccp/download/all_clean.xls',
       token,
-      'toutes_lignes_nettoyees.csv',
+      'toutes_lignes_nettoyees.xls',
     );
   },
 };

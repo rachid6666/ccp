@@ -71,7 +71,7 @@ export const ResultPage: React.FC = () => {
       <div className="container">
         <div className="result-header">
           <h1>Rapport CCP généré</h1>
-          <p>Votre analyse est prête. Vous pouvez télécharger les fichiers CSV ci-dessous.</p>
+          <p>Votre analyse est prête. Vous pouvez télécharger les fichiers Excel ci-dessous.</p>
         </div>
 
         <div className="kpi-cards">
@@ -137,19 +137,19 @@ export const ResultPage: React.FC = () => {
         </div>
 
         <div className="download-section">
-          <h2>Télécharger les rapports CSV</h2>
+          <h2>Télécharger les rapports Excel</h2>
           <div className="download-buttons">
             <button
-              onClick={() => handleDownload('summary', apiService.downloadSummaryCsv)}
+              onClick={() => handleDownload('summary', apiService.downloadSummaryXls)}
               disabled={downloadingFile !== null}
               className="download-btn"
             >
               {downloadingFile === 'summary'
                 ? 'Téléchargement...'
-                : 'Télécharger le résumé CSV'}
+                : 'Télécharger le résumé Excel'}
             </button>
             <button
-              onClick={() => handleDownload('failed', apiService.downloadFailedClientsCsv)}
+              onClick={() => handleDownload('failed', apiService.downloadFailedClientsXls)}
               disabled={downloadingFile !== null}
               className="download-btn"
             >
@@ -158,7 +158,7 @@ export const ResultPage: React.FC = () => {
                 : 'Télécharger les clients échoués'}
             </button>
             <button
-              onClick={() => handleDownload('followup', apiService.downloadFollowUpCsv)}
+              onClick={() => handleDownload('followup', apiService.downloadFollowUpXls)}
               disabled={downloadingFile !== null}
               className="download-btn"
             >
@@ -167,7 +167,7 @@ export const ResultPage: React.FC = () => {
                 : 'Télécharger les clients à suivre'}
             </button>
             <button
-              onClick={() => handleDownload('risky', apiService.downloadRiskyClientsCsv)}
+              onClick={() => handleDownload('risky', apiService.downloadRiskyClientsXls)}
               disabled={downloadingFile !== null}
               className="download-btn"
             >
@@ -176,7 +176,7 @@ export const ResultPage: React.FC = () => {
                 : 'Télécharger les clients à risque'}
             </button>
             <button
-              onClick={() => handleDownload('blocklist', apiService.downloadBlockListCsv)}
+              onClick={() => handleDownload('blocklist', apiService.downloadBlockListXls)}
               disabled={downloadingFile !== null}
               className="download-btn"
             >
@@ -185,7 +185,7 @@ export const ResultPage: React.FC = () => {
                 : 'Télécharger la liste de blocage'}
             </button>
             <button
-              onClick={() => handleDownload('allclean', apiService.downloadAllCleanCsv)}
+              onClick={() => handleDownload('allclean', apiService.downloadAllCleanXls)}
               disabled={downloadingFile !== null}
               className="download-btn"
             >

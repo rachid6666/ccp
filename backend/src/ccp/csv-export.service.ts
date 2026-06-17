@@ -25,6 +25,43 @@ export class CsvExportService {
     return str;
   }
 
+  csvToExcelHtml(title: string, csv: string): string {
+    const rows = csv
+      .split(/\r?\n/)
+      .filter(row => row.length > 0)
+      .map(row => this.parseCsvRow(row));
+    const [headers = [], ...bodyRows] = rows;
+    const headerCells = headers
+      .map(header => `<th>${this.escapeHtml(header)}</th>`)
+      .join('');
+    const tableRows = bodyRows
+      .map(
+        row =>
+          `<tr>${row
+            .map(value => `<td>${this.escapeHtml(value)}</td>`)
+            .join('')}</tr>`,
+      )
+      .join('');
+
+    return `\uFEFF<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid #999; padding: 4px 8px; }
+    th { background: #e8eef7; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>${this.escapeHtml(title)}</h1>
+  <table>
+    <thead><tr>${headerCells}</tr></thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+</body>
+</html>`;
+  }
+
   async generateSummaryCsv(sessionId: number): Promise<string> {
     const session = await this.prisma.analysisSession.findUnique({
       where: { id: sessionId },
@@ -264,5 +301,40 @@ export class CsvExportService {
       return 'Montant échoué critique';
     }
     return 'Échecs sur plus de 3 mois';
+  }
+
+  private parseCsvRow(row: string): string[] {
+    const values: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let index = 0; index < row.length; index++) {
+      const char = row[index];
+      const nextChar = row[index + 1];
+
+      if (char === '"' && inQuotes && nextChar === '"') {
+        current += '"';
+        index++;
+      } else if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        values.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+
+    values.push(current);
+    return values;
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 }

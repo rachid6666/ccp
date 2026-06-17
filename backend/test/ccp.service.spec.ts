@@ -59,4 +59,136 @@ describe('CcpService upload limits and preview', () => {
       ]),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('should rebuild global risk from historical lines without double-counting months or references', async () => {
+    const prisma = {
+      ccpLine: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 1,
+            sessionId: 10,
+            clientAccountHash: 'hash1',
+            clientAccountMask: '******5172',
+            clientName: 'M.MENAOUER ALI',
+            clientNameNorm: 'm menaouer ali',
+            amount: 1000,
+            operationDate: new Date('2026-03-05T00:00:00.000Z'),
+            code: 1,
+            cleanReference: 'REF-1',
+            session: { lead: { wilaya: 'Alger' } },
+          },
+          {
+            id: 2,
+            sessionId: 10,
+            clientAccountHash: 'hash1',
+            clientAccountMask: '******5172',
+            clientName: 'M.MENAOUER ALI',
+            clientNameNorm: 'm menaouer ali',
+            amount: 1500,
+            operationDate: new Date('2026-03-20T00:00:00.000Z'),
+            code: 1,
+            cleanReference: 'REF-1',
+            session: { lead: { wilaya: 'Alger' } },
+          },
+          {
+            id: 3,
+            sessionId: 11,
+            clientAccountHash: 'hash1',
+            clientAccountMask: '******5172',
+            clientName: 'M.MENAOUER ALI',
+            clientNameNorm: 'm menaouer ali',
+            amount: 5000,
+            operationDate: new Date('2026-04-10T00:00:00.000Z'),
+            code: 0,
+            cleanReference: 'REF-2',
+            session: { lead: { wilaya: 'Oran' } },
+          },
+        ]),
+      },
+      globalRiskClient: {
+        findUnique: jest.fn().mockResolvedValue({
+          firstSeenAt: new Date('2026-01-01T00:00:00.000Z'),
+          seenInWilayas: ['Blida'],
+        }),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+    };
+    const utils = new UtilsService();
+    service = new CcpService(
+      prisma as any,
+      new CcpParserService(utils),
+      new RiskScoringService(),
+      utils,
+      {} as any,
+    );
+
+    await (service as any).rebuildGlobalRiskClient('hash1', 'Setif');
+
+    expect(prisma.globalRiskClient.update).toHaveBeenCalledTimes(1);
+    expect(prisma.globalRiskClient.create).not.toHaveBeenCalled();
+
+    const updateArgs = prisma.globalRiskClient.update.mock.calls[0][0];
+    expect(updateArgs.where).toEqual({ clientAccountHash: 'hash1' });
+    expect(updateArgs.data.lastClientName).toBe('M.MENAOUER ALI');
+    expect(updateArgs.data.lastClientAccountMask).toBe('******5172');
+    expect(Number(updateArgs.data.totalAttemptedAmount)).toBe(7500);
+    expect(Number(updateArgs.data.totalCollectedAmount)).toBe(5000);
+    expect(Number(updateArgs.data.totalFailedAmount)).toBe(2500);
+    expect(updateArgs.data.successLineCount).toBe(1);
+    expect(updateArgs.data.failedLineCount).toBe(2);
+    expect(updateArgs.data.uniqueFailedReferences).toBe(1);
+    expect(updateArgs.data.failedMonthsCount).toBe(1);
+    expect(updateArgs.data.seenInSessions).toBe(2);
+    expect(updateArgs.data.seenInWilayas.sort()).toEqual([
+      'Alger',
+      'Blida',
+      'Oran',
+      'Setif',
+    ]);
+  });
+
+  it('should export global risk clients as admin xls', async () => {
+    process.env.ADMIN_EXPORT_TOKEN = 'secret-admin-token';
+    const prisma = {
+      globalRiskClient: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            lastClientName: 'M.MENAOUER ALI',
+            lastClientAccountMask: '******5172',
+            riskScore: 45,
+            riskLevel: 'MOYEN',
+            seenInSessions: 2,
+            seenInWilayas: ['Alger', 'Oran'],
+            totalAttemptedAmount: 7500,
+            totalCollectedAmount: 5000,
+            totalFailedAmount: 2500,
+            successLineCount: 1,
+            failedLineCount: 2,
+            uniqueFailedReferences: 1,
+            failedMonthsCount: 1,
+            lastFailureDate: new Date('2026-03-20T00:00:00.000Z'),
+            firstSeenAt: new Date('2026-03-01T00:00:00.000Z'),
+            lastSeenAt: new Date('2026-04-01T00:00:00.000Z'),
+          },
+        ]),
+      },
+    };
+    const utils = new UtilsService();
+    service = new CcpService(
+      prisma as any,
+      new CcpParserService(utils),
+      new RiskScoringService(),
+      utils,
+      {} as any,
+    );
+
+    const xls = await service.downloadGlobalRiskXls('secret-admin-token');
+
+    expect(xls).toContain('<table>');
+    expect(xls).toContain('Global Risk Clients');
+    expect(xls).toContain('M.MENAOUER ALI');
+    expect(xls).toContain('******5172');
+    expect(xls).toContain('MOYEN');
+  });
 });

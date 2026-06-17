@@ -110,6 +110,8 @@ model GlobalRiskClient {
   id                    Int      @id @default(autoincrement())
   clientAccountHash      String   @unique
   clientNameHash         String?
+  lastClientName         String?
+  lastClientAccountMask  String?
 
   firstSeenAt            DateTime @default(now())
   lastSeenAt             DateTime @default(now())

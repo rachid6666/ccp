@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CcpParserService } from './ccp-parser.service';
 import { RiskScoringService } from './risk-scoring.service';
@@ -396,9 +401,19 @@ export class CcpService {
     return this.csvExport.generateSummaryCsv(session.id);
   }
 
+  async downloadSummaryXls(accessToken: string): Promise<string> {
+    const csv = await this.downloadSummaryCsv(accessToken);
+    return this.csvExport.csvToExcelHtml('Resume', csv);
+  }
+
   async downloadFailedClientsCsv(accessToken: string): Promise<string> {
     const session = await this.getSession(accessToken);
     return this.csvExport.generateFailedClientsCsv(session.id);
+  }
+
+  async downloadFailedClientsXls(accessToken: string): Promise<string> {
+    const csv = await this.downloadFailedClientsCsv(accessToken);
+    return this.csvExport.csvToExcelHtml('Clients echoues', csv);
   }
 
   async downloadFollowUpCsv(accessToken: string): Promise<string> {
@@ -406,9 +421,19 @@ export class CcpService {
     return this.csvExport.generateFollowUpCsv(session.id);
   }
 
+  async downloadFollowUpXls(accessToken: string): Promise<string> {
+    const csv = await this.downloadFollowUpCsv(accessToken);
+    return this.csvExport.csvToExcelHtml('Clients a suivre', csv);
+  }
+
   async downloadRiskyClientsCsv(accessToken: string): Promise<string> {
     const session = await this.getSession(accessToken);
     return this.csvExport.generateRiskyClientsCsv(session.id);
+  }
+
+  async downloadRiskyClientsXls(accessToken: string): Promise<string> {
+    const csv = await this.downloadRiskyClientsCsv(accessToken);
+    return this.csvExport.csvToExcelHtml('Clients a risque', csv);
   }
 
   async downloadBlockListCsv(accessToken: string): Promise<string> {
@@ -416,9 +441,67 @@ export class CcpService {
     return this.csvExport.generateBlockListCsv(session.id);
   }
 
+  async downloadBlockListXls(accessToken: string): Promise<string> {
+    const csv = await this.downloadBlockListCsv(accessToken);
+    return this.csvExport.csvToExcelHtml('Liste de blocage', csv);
+  }
+
   async downloadAllCleanCsv(accessToken: string): Promise<string> {
     const session = await this.getSession(accessToken);
     return this.csvExport.generateAllCleanLinesCsv(session.id);
+  }
+
+  async downloadAllCleanXls(accessToken: string): Promise<string> {
+    const csv = await this.downloadAllCleanCsv(accessToken);
+    return this.csvExport.csvToExcelHtml('Toutes lignes nettoyees', csv);
+  }
+
+  async downloadGlobalRiskXls(adminToken: string): Promise<string> {
+    this.validateAdminExportToken(adminToken);
+
+    const clients = await this.prisma.globalRiskClient.findMany({
+      orderBy: [{ riskScore: 'desc' }, { totalFailedAmount: 'desc' }],
+    });
+
+    const headers = [
+      'Nom client',
+      'Compte CCP masque',
+      'Score risque',
+      'Niveau risque',
+      'Sessions',
+      'Wilayas',
+      'Montant total tente',
+      'Montant total encaisse',
+      'Montant total echoue',
+      'Operations encaissees',
+      'Operations echouees',
+      'References echouees uniques',
+      'Mois avec echec',
+      'Derniere date echec',
+      'Premier upload',
+      'Dernier upload',
+    ];
+
+    const rows = clients.map(client => [
+      client.lastClientName || '',
+      client.lastClientAccountMask || '',
+      client.riskScore,
+      client.riskLevel,
+      client.seenInSessions,
+      client.seenInWilayas.join(', '),
+      client.totalAttemptedAmount,
+      client.totalCollectedAmount,
+      client.totalFailedAmount,
+      client.successLineCount,
+      client.failedLineCount,
+      client.uniqueFailedReferences,
+      client.failedMonthsCount,
+      this.formatDateForExport(client.lastFailureDate),
+      this.formatDateForExport(client.firstSeenAt),
+      this.formatDateForExport(client.lastSeenAt),
+    ]);
+
+    return this.buildExcelHtml('Global Risk Clients', headers, rows);
   }
 
   private async getSession(accessToken: string) {
@@ -436,6 +519,75 @@ export class CcpService {
     }
 
     return session;
+  }
+
+  private validateAdminExportToken(adminToken: string): void {
+    const expectedToken = process.env.ADMIN_EXPORT_TOKEN;
+    if (!expectedToken) {
+      throw new BadRequestException('Admin export token is not configured');
+    }
+    if (!adminToken || adminToken !== expectedToken) {
+      throw new UnauthorizedException('Invalid admin export token');
+    }
+  }
+
+  private buildExcelHtml(
+    title: string,
+    headers: string[],
+    rows: unknown[][],
+  ): string {
+    const headerCells = headers
+      .map(header => `<th>${this.escapeHtml(header)}</th>`)
+      .join('');
+    const bodyRows = rows
+      .map(
+        row =>
+          `<tr>${row
+            .map(value => `<td>${this.escapeHtml(this.exportValue(value))}</td>`)
+            .join('')}</tr>`,
+      )
+      .join('');
+
+    return `\uFEFF<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid #999; padding: 4px 8px; }
+    th { background: #e8eef7; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>${this.escapeHtml(title)}</h1>
+  <table>
+    <thead><tr>${headerCells}</tr></thead>
+    <tbody>${bodyRows}</tbody>
+  </table>
+</body>
+</html>`;
+  }
+
+  private exportValue(value: unknown): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return String(value);
+  }
+
+  private formatDateForExport(date: Date | null): string {
+    if (!date) {
+      return '';
+    }
+    return date.toISOString().substring(0, 10);
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   private validateFiles(files: { buffer: Buffer; filename: string }[]): void {
@@ -497,108 +649,128 @@ export class CcpService {
     >,
     wilaya: string | null,
   ): Promise<void> {
-    const now = new Date();
+    for (const clientAccountHash of clientStats.keys()) {
+      await this.rebuildGlobalRiskClient(clientAccountHash, wilaya);
+    }
+  }
 
-    for (const [clientAccountHash, stats] of clientStats.entries()) {
-      const riskData = {
-        clientAccountHash,
-        clientAccountMask: stats.mask,
-        clientName: stats.name,
-        clientNameNorm: stats.nameNorm,
-        totalAttemptedAmount: stats.totalAttempted,
-        totalCollectedAmount: stats.totalCollected,
-        totalFailedAmount: stats.totalFailed,
-        successLineCount: stats.successLines,
-        failedLineCount: stats.failedLines,
-        uniqueFailedReferences: stats.failedRefs.size,
-        failedMonthsCount: stats.failedMonths.size,
-        lastFailureDate: stats.lastFailure,
-      };
-      const risk = this.riskScoring.calculateRiskScore(riskData);
-      const existing = await this.prisma.globalRiskClient.findUnique({
-        where: { clientAccountHash },
-      });
-      const wilayaSet = new Set<string>(existing?.seenInWilayas ?? []);
-      if (wilaya?.trim()) {
-        wilayaSet.add(wilaya.trim());
-      }
-
-      if (!existing) {
-        await this.prisma.globalRiskClient.create({
-          data: {
-            clientAccountHash,
-            clientNameHash: stats.nameNorm
-              ? this.utils.hashValue(stats.nameNorm, this.clientHashSalt)
-              : null,
-            firstSeenAt: now,
-            lastSeenAt: now,
-            seenInSessions: 1,
-            seenInWilayas: Array.from(wilayaSet),
-            totalAttemptedAmount: new Decimal(stats.totalAttempted),
-            totalCollectedAmount: new Decimal(stats.totalCollected),
-            totalFailedAmount: new Decimal(stats.totalFailed),
-            successLineCount: stats.successLines,
-            failedLineCount: stats.failedLines,
-            uniqueFailedReferences: stats.failedRefs.size,
-            failedMonthsCount: stats.failedMonths.size,
-            lastFailureDate: stats.lastFailure,
-            riskScore: risk.score,
-            riskLevel: risk.level,
+  private async rebuildGlobalRiskClient(
+    clientAccountHash: string,
+    currentWilaya: string | null,
+  ): Promise<void> {
+    const lines = await this.prisma.ccpLine.findMany({
+      where: { clientAccountHash },
+      include: {
+        session: {
+          include: {
+            lead: true,
           },
-        });
-        continue;
+        },
+      },
+      orderBy: [{ operationDate: 'asc' }, { id: 'asc' }],
+    });
+
+    if (lines.length === 0) {
+      return;
+    }
+
+    const existing = await this.prisma.globalRiskClient.findUnique({
+      where: { clientAccountHash },
+    });
+
+    let totalAttemptedAmount = 0;
+    let totalCollectedAmount = 0;
+    let totalFailedAmount = 0;
+    let successLineCount = 0;
+    let failedLineCount = 0;
+    const failedReferences = new Set<string>();
+    const failedMonths = new Set<string>();
+    const sessionIds = new Set<number>();
+    const wilayaSet = new Set<string>(existing?.seenInWilayas ?? []);
+    let lastFailureDate: Date | null = null;
+
+    for (const line of lines) {
+      const amount = Number(line.amount);
+      totalAttemptedAmount += amount;
+      sessionIds.add(line.sessionId);
+
+      const lineWilaya = line.session?.lead?.wilaya;
+      if (lineWilaya?.trim()) {
+        wilayaSet.add(lineWilaya.trim());
       }
 
-      const totalAttemptedAmount =
-        Number(existing.totalAttemptedAmount) + stats.totalAttempted;
-      const totalCollectedAmount =
-        Number(existing.totalCollectedAmount) + stats.totalCollected;
-      const totalFailedAmount = Number(existing.totalFailedAmount) + stats.totalFailed;
-      const successLineCount = existing.successLineCount + stats.successLines;
-      const failedLineCount = existing.failedLineCount + stats.failedLines;
-      const uniqueFailedReferences =
-        existing.uniqueFailedReferences + stats.failedRefs.size;
-      const failedMonthsCount = existing.failedMonthsCount + stats.failedMonths.size;
-      const lastFailureDate =
-        existing.lastFailureDate && stats.lastFailure
-          ? existing.lastFailureDate > stats.lastFailure
-            ? existing.lastFailureDate
-            : stats.lastFailure
-          : existing.lastFailureDate ?? stats.lastFailure;
+      if (line.code === 0) {
+        totalCollectedAmount += amount;
+        successLineCount++;
+      } else if (line.code === 1) {
+        totalFailedAmount += amount;
+        failedLineCount++;
+        failedReferences.add(line.cleanReference);
+        failedMonths.add(line.operationDate.toISOString().substring(0, 7));
+        if (!lastFailureDate || line.operationDate > lastFailureDate) {
+          lastFailureDate = line.operationDate;
+        }
+      }
+    }
 
-      const aggregateRisk = this.riskScoring.calculateRiskScore({
-        clientAccountHash,
-        clientAccountMask: stats.mask,
-        clientName: stats.name,
-        clientNameNorm: stats.nameNorm,
-        totalAttemptedAmount,
-        totalCollectedAmount,
-        totalFailedAmount,
-        successLineCount,
-        failedLineCount,
-        uniqueFailedReferences,
-        failedMonthsCount,
-        lastFailureDate,
-      });
+    if (currentWilaya?.trim()) {
+      wilayaSet.add(currentWilaya.trim());
+    }
 
-      await this.prisma.globalRiskClient.update({
-        where: { clientAccountHash },
+    const latestLine = lines[lines.length - 1];
+    const firstSeenAt = existing?.firstSeenAt ?? new Date();
+    const now = new Date();
+    const riskData = {
+      clientAccountHash,
+      clientAccountMask: latestLine.clientAccountMask,
+      clientName: latestLine.clientName,
+      clientNameNorm: latestLine.clientNameNorm,
+      totalAttemptedAmount,
+      totalCollectedAmount,
+      totalFailedAmount,
+      successLineCount,
+      failedLineCount,
+      uniqueFailedReferences: failedReferences.size,
+      failedMonthsCount: failedMonths.size,
+      lastFailureDate,
+    };
+    const risk = this.riskScoring.calculateRiskScore(riskData);
+
+    const data = {
+      clientNameHash: latestLine.clientNameNorm
+        ? this.utils.hashValue(latestLine.clientNameNorm, this.clientHashSalt)
+        : null,
+      lastClientName: latestLine.clientName,
+      lastClientAccountMask: latestLine.clientAccountMask,
+      lastSeenAt: now,
+      seenInSessions: sessionIds.size,
+      seenInWilayas: Array.from(wilayaSet),
+      totalAttemptedAmount: new Decimal(totalAttemptedAmount),
+      totalCollectedAmount: new Decimal(totalCollectedAmount),
+      totalFailedAmount: new Decimal(totalFailedAmount),
+      successLineCount,
+      failedLineCount,
+      uniqueFailedReferences: failedReferences.size,
+      failedMonthsCount: failedMonths.size,
+      lastFailureDate,
+      riskScore: risk.score,
+      riskLevel: risk.level,
+    };
+
+    if (!existing) {
+      await this.prisma.globalRiskClient.create({
         data: {
-          lastSeenAt: now,
-          seenInSessions: { increment: 1 },
-          seenInWilayas: Array.from(wilayaSet),
-          totalAttemptedAmount: new Decimal(totalAttemptedAmount),
-          totalCollectedAmount: new Decimal(totalCollectedAmount),
-          totalFailedAmount: new Decimal(totalFailedAmount),
-          successLineCount,
-          failedLineCount,
-          uniqueFailedReferences,
-          failedMonthsCount,
-          lastFailureDate,
-          riskScore: aggregateRisk.score,
-          riskLevel: aggregateRisk.level,
+          clientAccountHash,
+          firstSeenAt,
+          ...data,
         },
       });
+      return;
     }
+
+    await this.prisma.globalRiskClient.update({
+      where: { clientAccountHash },
+      data,
+    });
   }
 }
