@@ -165,8 +165,14 @@ describe('CsvExportService', () => {
       },
       ccpLine: {
         findMany: jest.fn().mockResolvedValue([
-          duplicateFailure,
-          duplicateFailure,
+          {
+            file: { id: 1, originalFilename: 'RESULT-21008367-WISAM.txt' },
+            ...duplicateFailure,
+          },
+          {
+            file: { id: 2, originalFilename: 'RESULT-21008367-WISAM.txt' },
+            ...duplicateFailure,
+          },
         ]),
       },
     };
@@ -176,5 +182,38 @@ describe('CsvExportService', () => {
 
     expect(csv).toContain('M.AHMED,******8367,1200.00,0.00');
     expect(csv).not.toContain('2400.00');
+  });
+
+  it('should count repeated paid references inside the same source file in exports', async () => {
+    const repeatedPaid = {
+      clientAccountHash: 'hash1',
+      clientAccountMask: '******0042',
+      clientName: 'M.KERSAOUI BILAL',
+      clientNameNorm: 'm kersaoui bilal',
+      amount: 2400,
+      operationDate: new Date('2025-06-25T00:00:00.000Z'),
+      ccpAccount: '00210042',
+      code: 0,
+      cleanReference: 'PAHMED250607',
+      file: { id: 1, originalFilename: 'RESULT-21008367-WISAM.txt' },
+    };
+    const prisma = {
+      analysisSession: {
+        findUnique: jest.fn().mockResolvedValue({
+          lead: { paymentCycleStartDay: 5 },
+        }),
+      },
+      ccpLine: {
+        findMany: jest.fn().mockResolvedValue([repeatedPaid, repeatedPaid]),
+      },
+    };
+
+    const service = new CsvExportService(prisma as any, new RiskScoringService());
+    const rows = await (service as any).getClientExportRows(1);
+
+    expect(rows[0].totalAttemptedAmount).toBe(4800);
+    expect(rows[0].totalCollectedAmount).toBe(4800);
+    expect(rows[0].totalFailedAmount).toBe(0);
+    expect(rows[0].successLineCount).toBe(2);
   });
 });

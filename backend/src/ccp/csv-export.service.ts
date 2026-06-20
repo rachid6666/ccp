@@ -236,9 +236,11 @@ export class CsvExportService {
       await this.getSessionPaymentCycleStartDay(sessionId);
     const lines = await this.prisma.ccpLine.findMany({
       where: { sessionId },
+      include: { file: true },
       orderBy: [{ clientAccountHash: 'asc' }, { operationDate: 'asc' }],
     });
-    const seenLineEventKeys = new Set<string>();
+    const lineOccurrenceCounts = new Map<string, number>();
+    const seenLineOccurrenceKeys = new Set<string>();
 
     const clients = new Map<
       string,
@@ -259,11 +261,14 @@ export class CsvExportService {
     >();
 
     for (const line of lines) {
-      const lineEventKey = this.lineEventKey(line);
-      if (seenLineEventKeys.has(lineEventKey)) {
+      const lineOccurrenceKey = this.lineOccurrenceKey(
+        line,
+        lineOccurrenceCounts,
+      );
+      if (seenLineOccurrenceKeys.has(lineOccurrenceKey)) {
         continue;
       }
-      seenLineEventKeys.add(lineEventKey);
+      seenLineOccurrenceKeys.add(lineOccurrenceKey);
 
       const hash = line.clientAccountHash;
       if (!clients.has(hash)) {
@@ -435,6 +440,28 @@ export class CsvExportService {
       line.code,
       Number(line.amount).toFixed(2),
     ].join('|');
+  }
+
+  private lineOccurrenceKey(
+    line: {
+      clientAccountHash: string;
+      ccpAccount: string;
+      cleanReference: string;
+      operationDate: Date;
+      code: number;
+      amount: unknown;
+      file?: { id?: number; filename?: string; originalFilename?: string };
+    },
+    occurrenceCounts: Map<string, number>,
+  ): string {
+    const filename =
+      line.file?.originalFilename || line.file?.filename || 'unknown-file';
+    const fileInstance = line.file?.id ?? 'unknown-file-instance';
+    const eventKey = this.lineEventKey(line);
+    const occurrenceCountKey = `${fileInstance}|${filename}|${eventKey}`;
+    const occurrence = (occurrenceCounts.get(occurrenceCountKey) || 0) + 1;
+    occurrenceCounts.set(occurrenceCountKey, occurrence);
+    return `${filename}|${eventKey}|${occurrence}`;
   }
 
   private paymentCycleMonth(date: Date, paymentCycleStartDay = 5): string {

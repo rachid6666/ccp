@@ -145,8 +145,6 @@ export class CcpService {
     let failedAmount = 0;
     let successCount = 0;
     let failedCount = 0;
-    const seenUploadLineKeys = new Set<string>();
-
     const clientStats = new Map<
       string,
       {
@@ -209,12 +207,6 @@ export class CcpService {
           invalidLines++;
           fileInvalidLines++;
         } else {
-          const lineEventKey = this.lineEventKey(parsedLine);
-          if (seenUploadLineKeys.has(lineEventKey)) {
-            continue;
-          }
-          seenUploadLineKeys.add(lineEventKey);
-
           const ccpLine = {
             sessionId: session.id,
             fileId: uploadedFile.id,
@@ -709,6 +701,28 @@ export class CcpService {
     ].join('|');
   }
 
+  private lineOccurrenceKey(
+    line: {
+      clientAccountHash: string;
+      ccpAccount: string;
+      cleanReference: string;
+      operationDate: Date;
+      code: number;
+      amount: unknown;
+      file?: { id?: number; filename?: string; originalFilename?: string };
+    },
+    occurrenceCounts: Map<string, number>,
+  ): string {
+    const filename =
+      line.file?.originalFilename || line.file?.filename || 'unknown-file';
+    const fileInstance = line.file?.id ?? 'unknown-file-instance';
+    const eventKey = this.lineEventKey(line);
+    const occurrenceCountKey = `${fileInstance}|${filename}|${eventKey}`;
+    const occurrence = (occurrenceCounts.get(occurrenceCountKey) || 0) + 1;
+    occurrenceCounts.set(occurrenceCountKey, occurrence);
+    return `${filename}|${eventKey}|${occurrence}`;
+  }
+
   private paymentCycleMonth(date: Date, paymentCycleStartDay = 5): string {
     const cycleDate = new Date(date);
     if (cycleDate.getUTCDate() < paymentCycleStartDay) {
@@ -899,6 +913,7 @@ export class CcpService {
     const lines = await this.prisma.ccpLine.findMany({
       where: { clientAccountHash },
       include: {
+        file: true,
         session: {
           include: {
             lead: true,
@@ -932,14 +947,18 @@ export class CcpService {
     >();
     const sessionIds = new Set<number>();
     const wilayaSet = new Set<string>(existing?.seenInWilayas ?? []);
-    const seenLineEventKeys = new Set<string>();
+    const lineOccurrenceCounts = new Map<string, number>();
+    const seenLineOccurrenceKeys = new Set<string>();
 
     for (const line of lines) {
-      const lineEventKey = this.lineEventKey(line);
-      if (seenLineEventKeys.has(lineEventKey)) {
+      const lineOccurrenceKey = this.lineOccurrenceKey(
+        line,
+        lineOccurrenceCounts,
+      );
+      if (seenLineOccurrenceKeys.has(lineOccurrenceKey)) {
         continue;
       }
-      seenLineEventKeys.add(lineEventKey);
+      seenLineOccurrenceKeys.add(lineOccurrenceKey);
 
       const amount = Number(line.amount);
       sessionIds.add(line.sessionId);
