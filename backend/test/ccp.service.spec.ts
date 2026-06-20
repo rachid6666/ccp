@@ -381,7 +381,7 @@ describe('CcpService upload limits and preview', () => {
     await (service as any).rebuildGlobalRiskClient('hash1', 'Setif');
 
     const createArgs = prisma.globalRiskClient.create.mock.calls[0][0];
-    expect(createArgs.data.seenInSessions).toBe(1);
+    expect(createArgs.data.seenInSessions).toBe(2);
     expect(Number(createArgs.data.totalAttemptedAmount)).toBe(1200);
     expect(Number(createArgs.data.totalFailedAmount)).toBe(1200);
     expect(createArgs.data.failedLineCount).toBe(1);
@@ -454,6 +454,60 @@ describe('CcpService upload limits and preview', () => {
         findMany: jest.fn().mockResolvedValue([
           { id: 1, sessionId: 10, ...repeatedPaid },
           { id: 2, sessionId: 10, ...repeatedPaid },
+        ]),
+      },
+      globalRiskClient: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+    };
+    const utils = new UtilsService();
+    service = new CcpService(
+      prisma as any,
+      new CcpParserService(utils),
+      new RiskScoringService(),
+      utils,
+      {} as any,
+    );
+
+    await (service as any).rebuildGlobalRiskClient('hash1', 'Setif');
+
+    const createArgs = prisma.globalRiskClient.create.mock.calls[0][0];
+    expect(Number(createArgs.data.totalAttemptedAmount)).toBe(4800);
+    expect(Number(createArgs.data.totalCollectedAmount)).toBe(4800);
+    expect(Number(createArgs.data.totalFailedAmount)).toBe(0);
+    expect(createArgs.data.successLineCount).toBe(2);
+  });
+
+  it('should count duplicate paid references across repeated uploaded files', async () => {
+    const repeatedPaid = {
+      clientAccountHash: 'hash1',
+      clientAccountMask: '******0042',
+      clientName: 'M.KERSAOUI BILAL',
+      clientNameNorm: 'm kersaoui bilal',
+      amount: 2400,
+      operationDate: new Date('2025-06-25T00:00:00.000Z'),
+      ccpAccount: '00210042',
+      code: 0,
+      cleanReference: 'PAHMED250607',
+      session: { lead: { wilaya: 'Setif', paymentCycleStartDay: 5 } },
+    };
+    const prisma = {
+      ccpLine: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 1,
+            sessionId: 10,
+            file: { id: 1, originalFilename: 'RESULT-21008367-WISAM.txt' },
+            ...repeatedPaid,
+          },
+          {
+            id: 2,
+            sessionId: 11,
+            file: { id: 2, originalFilename: 'RESULT-21008367-WISAM.txt' },
+            ...repeatedPaid,
+          },
         ]),
       },
       globalRiskClient: {

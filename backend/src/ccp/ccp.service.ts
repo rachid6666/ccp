@@ -951,15 +951,6 @@ export class CcpService {
     const seenLineOccurrenceKeys = new Set<string>();
 
     for (const line of lines) {
-      const lineOccurrenceKey = this.lineOccurrenceKey(
-        line,
-        lineOccurrenceCounts,
-      );
-      if (seenLineOccurrenceKeys.has(lineOccurrenceKey)) {
-        continue;
-      }
-      seenLineOccurrenceKeys.add(lineOccurrenceKey);
-
       const amount = Number(line.amount);
       sessionIds.add(line.sessionId);
 
@@ -995,6 +986,15 @@ export class CcpService {
         successLineCount++;
         paymentGroup.successLines++;
       } else if (line.code === 1) {
+        const lineOccurrenceKey = this.lineOccurrenceKey(
+          line,
+          lineOccurrenceCounts,
+        );
+        if (seenLineOccurrenceKeys.has(lineOccurrenceKey)) {
+          continue;
+        }
+        seenLineOccurrenceKeys.add(lineOccurrenceKey);
+
         paymentGroup.failedAmount += amount;
         paymentGroup.failedLines++;
         if (

@@ -261,15 +261,6 @@ export class CsvExportService {
     >();
 
     for (const line of lines) {
-      const lineOccurrenceKey = this.lineOccurrenceKey(
-        line,
-        lineOccurrenceCounts,
-      );
-      if (seenLineOccurrenceKeys.has(lineOccurrenceKey)) {
-        continue;
-      }
-      seenLineOccurrenceKeys.add(lineOccurrenceKey);
-
       const hash = line.clientAccountHash;
       if (!clients.has(hash)) {
         clients.set(hash, {
@@ -315,6 +306,15 @@ export class CsvExportService {
         client.successLineCount++;
         paymentGroup.successLines++;
       } else if (line.code === 1) {
+        const lineOccurrenceKey = this.lineOccurrenceKey(
+          line,
+          lineOccurrenceCounts,
+        );
+        if (seenLineOccurrenceKeys.has(lineOccurrenceKey)) {
+          continue;
+        }
+        seenLineOccurrenceKeys.add(lineOccurrenceKey);
+
         paymentGroup.failedAmount += amount;
         paymentGroup.failedLines++;
         if (

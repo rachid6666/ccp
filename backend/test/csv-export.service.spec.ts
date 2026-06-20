@@ -216,4 +216,45 @@ describe('CsvExportService', () => {
     expect(rows[0].totalFailedAmount).toBe(0);
     expect(rows[0].successLineCount).toBe(2);
   });
+
+  it('should count duplicate paid references across repeated uploaded files in exports', async () => {
+    const repeatedPaid = {
+      clientAccountHash: 'hash1',
+      clientAccountMask: '******0042',
+      clientName: 'M.KERSAOUI BILAL',
+      clientNameNorm: 'm kersaoui bilal',
+      amount: 2400,
+      operationDate: new Date('2025-06-25T00:00:00.000Z'),
+      ccpAccount: '00210042',
+      code: 0,
+      cleanReference: 'PAHMED250607',
+    };
+    const prisma = {
+      analysisSession: {
+        findUnique: jest.fn().mockResolvedValue({
+          lead: { paymentCycleStartDay: 5 },
+        }),
+      },
+      ccpLine: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            file: { id: 1, originalFilename: 'RESULT-21008367-WISAM.txt' },
+            ...repeatedPaid,
+          },
+          {
+            file: { id: 2, originalFilename: 'RESULT-21008367-WISAM.txt' },
+            ...repeatedPaid,
+          },
+        ]),
+      },
+    };
+
+    const service = new CsvExportService(prisma as any, new RiskScoringService());
+    const rows = await (service as any).getClientExportRows(1);
+
+    expect(rows[0].totalAttemptedAmount).toBe(4800);
+    expect(rows[0].totalCollectedAmount).toBe(4800);
+    expect(rows[0].totalFailedAmount).toBe(0);
+    expect(rows[0].successLineCount).toBe(2);
+  });
 });
