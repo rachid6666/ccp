@@ -4,6 +4,13 @@
 
 Risk scoring is the process of evaluating each client's payment history to classify them into categories and assign a numeric risk score from 0-100.
 
+## Aggregation Rules
+
+- Paid rows (`code = 0`) are summed even when the same reference appears multiple times in the same source file.
+- Repeated uploads of the same source file are deduplicated by original filename, transaction fingerprint, and occurrence number inside the file.
+- Failed rows (`code = 1`) are considered resolved when the same account/reference is later paid inside the showroom payment cycle.
+- Payment cycles are showroom-specific; default is day 5, so the cycle runs from the 05 to the 04 of the next month.
+
 ## Classification System
 
 ### Four Client Categories
