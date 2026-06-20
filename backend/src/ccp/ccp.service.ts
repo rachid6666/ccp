@@ -462,8 +462,19 @@ export class CcpService {
     const clients = await this.prisma.globalRiskClient.findMany({
       orderBy: [{ riskScore: 'desc' }, { totalFailedAmount: 'desc' }],
     });
+    const missingIdentityHashes = clients
+      .filter(
+        client =>
+          this.isMissingExportIdentity(client.lastClientName) ||
+          this.isMissingExportIdentity(client.lastClientAccountMask),
+      )
+      .map(client => client.clientAccountHash);
+    const cleanIdentityByHash = await this.getLatestCleanIdentityByHash(
+      missingIdentityHashes,
+    );
 
     const headers = [
+      'Hash client',
       'Nom client',
       'Compte CCP masque',
       'Score risque',
@@ -482,26 +493,81 @@ export class CcpService {
       'Dernier upload',
     ];
 
-    const rows = clients.map(client => [
-      client.lastClientName || '',
-      client.lastClientAccountMask || '',
-      client.riskScore,
-      client.riskLevel,
-      client.seenInSessions,
-      client.seenInWilayas.join(', '),
-      client.totalAttemptedAmount,
-      client.totalCollectedAmount,
-      client.totalFailedAmount,
-      client.successLineCount,
-      client.failedLineCount,
-      client.uniqueFailedReferences,
-      client.failedMonthsCount,
-      this.formatDateForExport(client.lastFailureDate),
-      this.formatDateForExport(client.firstSeenAt),
-      this.formatDateForExport(client.lastSeenAt),
-    ]);
+    const rows = clients.map(client => {
+      const cleanIdentity = cleanIdentityByHash.get(client.clientAccountHash);
+      const clientName = this.isMissingExportIdentity(client.lastClientName)
+        ? cleanIdentity?.clientName
+        : client.lastClientName;
+      const clientAccountMask = this.isMissingExportIdentity(
+        client.lastClientAccountMask,
+      )
+        ? cleanIdentity?.clientAccountMask
+        : client.lastClientAccountMask;
+
+      return [
+        client.clientAccountHash,
+        clientName || '',
+        clientAccountMask || '',
+        client.riskScore,
+        client.riskLevel,
+        client.seenInSessions,
+        client.seenInWilayas.join(', '),
+        client.totalAttemptedAmount,
+        client.totalCollectedAmount,
+        client.totalFailedAmount,
+        client.successLineCount,
+        client.failedLineCount,
+        client.uniqueFailedReferences,
+        client.failedMonthsCount,
+        this.formatDateForExport(client.lastFailureDate),
+        this.formatDateForExport(client.firstSeenAt),
+        this.formatDateForExport(client.lastSeenAt),
+      ];
+    });
 
     return this.buildExcelHtml('Global Risk Clients', headers, rows);
+  }
+
+  private async getLatestCleanIdentityByHash(
+    clientAccountHashes: string[],
+  ): Promise<Map<string, { clientName: string; clientAccountMask: string }>> {
+    if (clientAccountHashes.length === 0) {
+      return new Map();
+    }
+
+    const lines = await this.prisma.ccpLine.findMany({
+      where: {
+        clientAccountHash: { in: Array.from(new Set(clientAccountHashes)) },
+      },
+      select: {
+        clientAccountHash: true,
+        clientName: true,
+        clientAccountMask: true,
+      },
+      orderBy: [{ operationDate: 'desc' }, { id: 'desc' }],
+    });
+
+    const identityByHash = new Map<
+      string,
+      { clientName: string; clientAccountMask: string }
+    >();
+    for (const line of lines) {
+      if (!identityByHash.has(line.clientAccountHash)) {
+        identityByHash.set(line.clientAccountHash, {
+          clientName: line.clientName,
+          clientAccountMask: line.clientAccountMask,
+        });
+      }
+    }
+
+    return identityByHash;
+  }
+
+  private isMissingExportIdentity(value: string | null | undefined): boolean {
+    if (!value) {
+      return true;
+    }
+    return value.trim().toLowerCase() === 'null';
   }
 
   private async getSession(accessToken: string) {

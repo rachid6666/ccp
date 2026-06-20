@@ -154,6 +154,7 @@ describe('CcpService upload limits and preview', () => {
       globalRiskClient: {
         findMany: jest.fn().mockResolvedValue([
           {
+            clientAccountHash: 'hash1',
             lastClientName: 'M.MENAOUER ALI',
             lastClientAccountMask: '******5172',
             riskScore: 45,
@@ -173,6 +174,9 @@ describe('CcpService upload limits and preview', () => {
           },
         ]),
       },
+      ccpLine: {
+        findMany: jest.fn(),
+      },
     };
     const utils = new UtilsService();
     service = new CcpService(
@@ -190,5 +194,71 @@ describe('CcpService upload limits and preview', () => {
     expect(xls).toContain('M.MENAOUER ALI');
     expect(xls).toContain('******5172');
     expect(xls).toContain('MOYEN');
+    expect(prisma.ccpLine.findMany).not.toHaveBeenCalled();
+  });
+
+  it('should backfill missing global risk names from clean CCP lines in admin xls', async () => {
+    process.env.ADMIN_EXPORT_TOKEN = 'secret-admin-token';
+    const targetHash =
+      '3258e9592723139487a4c522eeab6637b69642fbb062aee68487725a075a3a22';
+    const prisma = {
+      globalRiskClient: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            clientAccountHash: targetHash,
+            lastClientName: null,
+            lastClientAccountMask: 'Null',
+            riskScore: 72,
+            riskLevel: 'ELEVE',
+            seenInSessions: 3,
+            seenInWilayas: ['Setif'],
+            totalAttemptedAmount: 12000,
+            totalCollectedAmount: 4000,
+            totalFailedAmount: 8000,
+            successLineCount: 1,
+            failedLineCount: 4,
+            uniqueFailedReferences: 2,
+            failedMonthsCount: 2,
+            lastFailureDate: new Date('2026-05-20T00:00:00.000Z'),
+            firstSeenAt: new Date('2026-03-01T00:00:00.000Z'),
+            lastSeenAt: new Date('2026-05-21T00:00:00.000Z'),
+          },
+        ]),
+      },
+      ccpLine: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            clientAccountHash: targetHash,
+            clientName: 'M.CLIENT CLEAN',
+            clientAccountMask: '******3A22',
+          },
+        ]),
+      },
+    };
+    const utils = new UtilsService();
+    service = new CcpService(
+      prisma as any,
+      new CcpParserService(utils),
+      new RiskScoringService(),
+      utils,
+      {} as any,
+    );
+
+    const xls = await service.downloadGlobalRiskXls('secret-admin-token');
+
+    expect(prisma.ccpLine.findMany).toHaveBeenCalledWith({
+      where: {
+        clientAccountHash: { in: [targetHash] },
+      },
+      select: {
+        clientAccountHash: true,
+        clientName: true,
+        clientAccountMask: true,
+      },
+      orderBy: [{ operationDate: 'desc' }, { id: 'desc' }],
+    });
+    expect(xls).toContain(targetHash);
+    expect(xls).toContain('M.CLIENT CLEAN');
+    expect(xls).toContain('******3A22');
   });
 });
