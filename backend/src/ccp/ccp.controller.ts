@@ -48,6 +48,7 @@ export class CcpController {
     @Body('showroomName') showroomName: string,
     @Body('phone') phone: string | null,
     @Body('wilaya') wilaya: string | null,
+    @Body('paymentCycleStartDay') paymentCycleStartDayStr: string | null,
     @Body('consentAccepted') consentAcceptedStr: string,
   ) {
     if (!files || files.length === 0) {
@@ -66,6 +67,7 @@ export class CcpController {
       showroomName,
       phone,
       wilaya,
+      paymentCycleStartDayStr ? parseInt(paymentCycleStartDayStr, 10) : 5,
       consentAccepted,
     );
 
@@ -195,6 +197,11 @@ export class CcpController {
   ) {
     const xls = await this.ccpService.downloadGlobalRiskXls(adminToken);
     this.sendXls(res, xls, 'global_risk_clients.xls');
+  }
+
+  @Post('admin/rebuild-global-risk')
+  async rebuildGlobalRisk(@Query('adminToken') adminToken: string) {
+    return this.ccpService.rebuildGlobalRiskDataset(adminToken);
   }
 
   private sendCsv(res: Response, csv: string, filename: string): void {

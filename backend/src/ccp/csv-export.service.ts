@@ -232,14 +232,39 @@ export class CsvExportService {
   }
 
   private async getClientExportRows(sessionId: number): Promise<ClientExportRow[]> {
+    const paymentCycleStartDay =
+      await this.getSessionPaymentCycleStartDay(sessionId);
     const lines = await this.prisma.ccpLine.findMany({
       where: { sessionId },
       orderBy: [{ clientAccountHash: 'asc' }, { operationDate: 'asc' }],
     });
+    const seenLineEventKeys = new Set<string>();
 
-    const clients = new Map<string, ClientExportRow & { failedRefs: Set<string>; failedMonths: Set<string> }>();
+    const clients = new Map<
+      string,
+      ClientExportRow & {
+        paymentGroups: Map<
+          string,
+          {
+            failedAmount: number;
+            failedLines: number;
+            successLines: number;
+            cleanReference: string;
+            month: string;
+            paymentCycleStartDay: number;
+            lastFailureDate: Date | null;
+          }
+        >;
+      }
+    >();
 
     for (const line of lines) {
+      const lineEventKey = this.lineEventKey(line);
+      if (seenLineEventKeys.has(lineEventKey)) {
+        continue;
+      }
+      seenLineEventKeys.add(lineEventKey);
+
       const hash = line.clientAccountHash;
       if (!clients.has(hash)) {
         clients.set(hash, {
@@ -257,33 +282,57 @@ export class CsvExportService {
           lastFailureDate: null,
           uniqueFailedMonthsLabel: '',
           recommendation: 'Client à suivre',
-          failedRefs: new Set<string>(),
-          failedMonths: new Set<string>(),
+          paymentGroups: new Map(),
         });
       }
 
       const client = clients.get(hash)!;
       const amount = Number(line.amount);
-      client.totalAttemptedAmount += amount;
+      const paymentGroupKey = this.paymentGroupKey(line, paymentCycleStartDay);
+      if (!client.paymentGroups.has(paymentGroupKey)) {
+        client.paymentGroups.set(paymentGroupKey, {
+          failedAmount: 0,
+          failedLines: 0,
+          successLines: 0,
+          cleanReference: line.cleanReference,
+          month: this.paymentCycleMonth(
+            line.operationDate,
+            paymentCycleStartDay,
+          ),
+          paymentCycleStartDay,
+          lastFailureDate: null,
+        });
+      }
+      const paymentGroup = client.paymentGroups.get(paymentGroupKey)!;
 
       if (line.code === 0) {
         client.totalCollectedAmount += amount;
         client.successLineCount++;
+        paymentGroup.successLines++;
       } else if (line.code === 1) {
-        client.totalFailedAmount += amount;
-        client.failedLineCount++;
-        client.failedRefs.add(line.cleanReference);
-        client.failedMonths.add(line.operationDate.toISOString().substring(0, 7));
-        if (!client.lastFailureDate || line.operationDate > client.lastFailureDate) {
-          client.lastFailureDate = line.operationDate;
+        paymentGroup.failedAmount += amount;
+        paymentGroup.failedLines++;
+        if (
+          !paymentGroup.lastFailureDate ||
+          line.operationDate > paymentGroup.lastFailureDate
+        ) {
+          paymentGroup.lastFailureDate = line.operationDate;
         }
       }
     }
 
     return Array.from(clients.values()).map(client => {
-      client.uniqueFailedReferences = client.failedRefs.size;
-      client.failedMonthsCount = client.failedMonths.size;
-      client.uniqueFailedMonthsLabel = Array.from(client.failedMonths).join('|');
+      const unsettledFailures = this.summarizeUnsettledPaymentGroups(
+        client.paymentGroups,
+      );
+      client.totalFailedAmount = unsettledFailures.totalFailedAmount;
+      client.totalAttemptedAmount =
+        client.totalCollectedAmount + unsettledFailures.totalFailedAmount;
+      client.failedLineCount = unsettledFailures.failedLineCount;
+      client.uniqueFailedReferences = unsettledFailures.uniqueFailedReferences;
+      client.failedMonthsCount = unsettledFailures.failedMonthsCount;
+      client.lastFailureDate = unsettledFailures.lastFailureDate;
+      client.uniqueFailedMonthsLabel = unsettledFailures.failedMonthsLabel;
       client.recommendation = this.riskScoring.classifyBlockCandidate(client)
         ? "Bloquer toute nouvelle facilité jusqu'au règlement"
         : this.riskScoring.classifyRisky(client)
@@ -301,6 +350,112 @@ export class CsvExportService {
       return 'Montant échoué critique';
     }
     return 'Échecs sur plus de 3 mois';
+  }
+
+  private summarizeUnsettledPaymentGroups(
+    paymentGroups: Map<
+      string,
+      {
+        failedAmount: number;
+        failedLines: number;
+        successLines: number;
+        cleanReference: string;
+        month: string;
+        paymentCycleStartDay: number;
+        lastFailureDate: Date | null;
+      }
+    >,
+  ): {
+    totalFailedAmount: number;
+    failedLineCount: number;
+    uniqueFailedReferences: number;
+    failedMonthsCount: number;
+    failedMonthsLabel: string;
+    lastFailureDate: Date | null;
+  } {
+    let totalFailedAmount = 0;
+    let failedLineCount = 0;
+    let lastFailureDate: Date | null = null;
+    const failedReferences = new Set<string>();
+    const failedMonths = new Set<string>();
+
+    for (const group of paymentGroups.values()) {
+      if (group.failedLines === 0 || group.successLines > 0) {
+        continue;
+      }
+
+      totalFailedAmount += group.failedAmount;
+      failedLineCount += group.failedLines;
+      failedReferences.add(group.cleanReference);
+      failedMonths.add(group.month);
+      if (
+        group.lastFailureDate &&
+        (!lastFailureDate || group.lastFailureDate > lastFailureDate)
+      ) {
+        lastFailureDate = group.lastFailureDate;
+      }
+    }
+
+    return {
+      totalFailedAmount,
+      failedLineCount,
+      uniqueFailedReferences: failedReferences.size,
+      failedMonthsCount: failedMonths.size,
+      failedMonthsLabel: Array.from(failedMonths).join('|'),
+      lastFailureDate,
+    };
+  }
+
+  private paymentGroupKey(line: {
+    ccpAccount: string;
+    cleanReference: string;
+    operationDate: Date;
+  }, paymentCycleStartDay = 5): string {
+    return [
+      line.ccpAccount,
+      line.cleanReference,
+      paymentCycleStartDay,
+      this.paymentCycleMonth(line.operationDate, paymentCycleStartDay),
+    ].join('|');
+  }
+
+  private lineEventKey(line: {
+    clientAccountHash: string;
+    ccpAccount: string;
+    cleanReference: string;
+    operationDate: Date;
+    code: number;
+    amount: unknown;
+  }): string {
+    return [
+      line.clientAccountHash,
+      line.ccpAccount,
+      line.cleanReference,
+      line.operationDate.toISOString(),
+      line.code,
+      Number(line.amount).toFixed(2),
+    ].join('|');
+  }
+
+  private paymentCycleMonth(date: Date, paymentCycleStartDay = 5): string {
+    const cycleDate = new Date(date);
+    if (cycleDate.getUTCDate() < paymentCycleStartDay) {
+      cycleDate.setUTCMonth(cycleDate.getUTCMonth() - 1);
+    }
+    return cycleDate.toISOString().substring(0, 7);
+  }
+
+  private async getSessionPaymentCycleStartDay(sessionId: number): Promise<number> {
+    if (!this.prisma.analysisSession?.findUnique) {
+      return 5;
+    }
+
+    const session = await this.prisma.analysisSession.findUnique({
+      where: { id: sessionId },
+      include: { lead: true },
+    });
+
+    return session?.lead?.paymentCycleStartDay ?? 5;
   }
 
   private parseCsvRow(row: string): string[] {

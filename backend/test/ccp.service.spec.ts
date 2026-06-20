@@ -73,6 +73,7 @@ describe('CcpService upload limits and preview', () => {
             clientNameNorm: 'm menaouer ali',
             amount: 1000,
             operationDate: new Date('2026-03-05T00:00:00.000Z'),
+            ccpAccount: '0021008367',
             code: 1,
             cleanReference: 'REF-1',
             session: { lead: { wilaya: 'Alger' } },
@@ -86,6 +87,7 @@ describe('CcpService upload limits and preview', () => {
             clientNameNorm: 'm menaouer ali',
             amount: 1500,
             operationDate: new Date('2026-03-20T00:00:00.000Z'),
+            ccpAccount: '0021008367',
             code: 1,
             cleanReference: 'REF-1',
             session: { lead: { wilaya: 'Alger' } },
@@ -99,6 +101,7 @@ describe('CcpService upload limits and preview', () => {
             clientNameNorm: 'm menaouer ali',
             amount: 5000,
             operationDate: new Date('2026-04-10T00:00:00.000Z'),
+            ccpAccount: '0021008367',
             code: 0,
             cleanReference: 'REF-2',
             session: { lead: { wilaya: 'Oran' } },
@@ -146,6 +149,234 @@ describe('CcpService upload limits and preview', () => {
       'Oran',
       'Setif',
     ]);
+  });
+
+  it('should not count a same-month failed reference as unpaid when later collected', async () => {
+    const prisma = {
+      ccpLine: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 1,
+            sessionId: 10,
+            clientAccountHash: 'hash1',
+            clientAccountMask: '******8367',
+            clientName: 'M.AHMED',
+            clientNameNorm: 'm ahmed',
+            amount: 1200,
+            operationDate: new Date('2025-06-05T00:00:00.000Z'),
+            ccpAccount: '0021008367',
+            code: 1,
+            cleanReference: 'FAHMED250601202',
+            session: { lead: { wilaya: 'Setif' } },
+          },
+          {
+            id: 2,
+            sessionId: 10,
+            clientAccountHash: 'hash1',
+            clientAccountMask: '******8367',
+            clientName: 'M.AHMED',
+            clientNameNorm: 'm ahmed',
+            amount: 1200,
+            operationDate: new Date('2025-06-25T00:00:00.000Z'),
+            ccpAccount: '0021008367',
+            code: 0,
+            cleanReference: 'FAHMED250601202',
+            session: { lead: { wilaya: 'Setif' } },
+          },
+        ]),
+      },
+      globalRiskClient: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+    };
+    const utils = new UtilsService();
+    service = new CcpService(
+      prisma as any,
+      new CcpParserService(utils),
+      new RiskScoringService(),
+      utils,
+      {} as any,
+    );
+
+    await (service as any).rebuildGlobalRiskClient('hash1', 'Setif');
+
+    expect(prisma.globalRiskClient.create).toHaveBeenCalledTimes(1);
+    const createArgs = prisma.globalRiskClient.create.mock.calls[0][0];
+    expect(Number(createArgs.data.totalAttemptedAmount)).toBe(1200);
+    expect(Number(createArgs.data.totalCollectedAmount)).toBe(1200);
+    expect(Number(createArgs.data.totalFailedAmount)).toBe(0);
+    expect(createArgs.data.failedLineCount).toBe(0);
+    expect(createArgs.data.uniqueFailedReferences).toBe(0);
+    expect(createArgs.data.failedMonthsCount).toBe(0);
+    expect(createArgs.data.lastFailureDate).toBeNull();
+    expect(createArgs.data.riskScore).toBe(0);
+    expect(createArgs.data.riskLevel).toBe('FAIBLE');
+  });
+
+  it('should group payment failures by prelevement cycle from day 5 to day 4', async () => {
+    const prisma = {
+      ccpLine: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 1,
+            sessionId: 10,
+            clientAccountHash: 'hash1',
+            clientAccountMask: '******8367',
+            clientName: 'M.AHMED',
+            clientNameNorm: 'm ahmed',
+            amount: 1200,
+            operationDate: new Date('2025-06-30T00:00:00.000Z'),
+            ccpAccount: '0021008367',
+            code: 1,
+            cleanReference: 'FAHMED250601202',
+            session: { lead: { wilaya: 'Setif' } },
+          },
+          {
+            id: 2,
+            sessionId: 10,
+            clientAccountHash: 'hash1',
+            clientAccountMask: '******8367',
+            clientName: 'M.AHMED',
+            clientNameNorm: 'm ahmed',
+            amount: 1200,
+            operationDate: new Date('2025-07-04T00:00:00.000Z'),
+            ccpAccount: '0021008367',
+            code: 0,
+            cleanReference: 'FAHMED250601202',
+            session: { lead: { wilaya: 'Setif' } },
+          },
+        ]),
+      },
+      globalRiskClient: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+    };
+    const utils = new UtilsService();
+    service = new CcpService(
+      prisma as any,
+      new CcpParserService(utils),
+      new RiskScoringService(),
+      utils,
+      {} as any,
+    );
+
+    await (service as any).rebuildGlobalRiskClient('hash1', 'Setif');
+
+    const createArgs = prisma.globalRiskClient.create.mock.calls[0][0];
+    expect(Number(createArgs.data.totalFailedAmount)).toBe(0);
+    expect(createArgs.data.failedMonthsCount).toBe(0);
+    expect(createArgs.data.lastFailureDate).toBeNull();
+  });
+
+  it('should use the showroom payment cycle start day when rebuilding global risk', async () => {
+    const prisma = {
+      ccpLine: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 1,
+            sessionId: 10,
+            clientAccountHash: 'hash1',
+            clientAccountMask: '******8367',
+            clientName: 'M.AHMED',
+            clientNameNorm: 'm ahmed',
+            amount: 1200,
+            operationDate: new Date('2025-01-31T00:00:00.000Z'),
+            ccpAccount: '0021008367',
+            code: 1,
+            cleanReference: 'FAHMED250601202',
+            session: {
+              lead: { wilaya: 'Setif', paymentCycleStartDay: 17 },
+            },
+          },
+          {
+            id: 2,
+            sessionId: 10,
+            clientAccountHash: 'hash1',
+            clientAccountMask: '******8367',
+            clientName: 'M.AHMED',
+            clientNameNorm: 'm ahmed',
+            amount: 1200,
+            operationDate: new Date('2025-02-16T00:00:00.000Z'),
+            ccpAccount: '0021008367',
+            code: 0,
+            cleanReference: 'FAHMED250601202',
+            session: {
+              lead: { wilaya: 'Setif', paymentCycleStartDay: 17 },
+            },
+          },
+        ]),
+      },
+      globalRiskClient: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+    };
+    const utils = new UtilsService();
+    service = new CcpService(
+      prisma as any,
+      new CcpParserService(utils),
+      new RiskScoringService(),
+      utils,
+      {} as any,
+    );
+
+    await (service as any).rebuildGlobalRiskClient('hash1', 'Setif');
+
+    const createArgs = prisma.globalRiskClient.create.mock.calls[0][0];
+    expect(Number(createArgs.data.totalFailedAmount)).toBe(0);
+    expect(createArgs.data.failedMonthsCount).toBe(0);
+    expect(createArgs.data.lastFailureDate).toBeNull();
+  });
+
+  it('should not double-count duplicate transaction events across repeated uploads', async () => {
+    const duplicateFailure = {
+      clientAccountHash: 'hash1',
+      clientAccountMask: '******8367',
+      clientName: 'M.AHMED',
+      clientNameNorm: 'm ahmed',
+      amount: 1200,
+      operationDate: new Date('2025-06-05T00:00:00.000Z'),
+      ccpAccount: '0021008367',
+      code: 1,
+      cleanReference: 'FAHMED250601202',
+      session: { lead: { wilaya: 'Setif', paymentCycleStartDay: 5 } },
+    };
+    const prisma = {
+      ccpLine: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 1, sessionId: 10, ...duplicateFailure },
+          { id: 2, sessionId: 11, ...duplicateFailure },
+        ]),
+      },
+      globalRiskClient: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+    };
+    const utils = new UtilsService();
+    service = new CcpService(
+      prisma as any,
+      new CcpParserService(utils),
+      new RiskScoringService(),
+      utils,
+      {} as any,
+    );
+
+    await (service as any).rebuildGlobalRiskClient('hash1', 'Setif');
+
+    const createArgs = prisma.globalRiskClient.create.mock.calls[0][0];
+    expect(createArgs.data.seenInSessions).toBe(1);
+    expect(Number(createArgs.data.totalAttemptedAmount)).toBe(1200);
+    expect(Number(createArgs.data.totalFailedAmount)).toBe(1200);
+    expect(createArgs.data.failedLineCount).toBe(1);
+    expect(createArgs.data.uniqueFailedReferences).toBe(1);
+    expect(createArgs.data.failedMonthsCount).toBe(1);
   });
 
   it('should export global risk clients as admin xls', async () => {
@@ -260,5 +491,58 @@ describe('CcpService upload limits and preview', () => {
     expect(xls).toContain(targetHash);
     expect(xls).toContain('M.CLIENT CLEAN');
     expect(xls).toContain('******3A22');
+  });
+
+  it('should rebuild all global risk clients as admin', async () => {
+    process.env.ADMIN_EXPORT_TOKEN = 'secret-admin-token';
+    const prisma = {
+      ccpLine: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { clientAccountHash: 'hash1' },
+            { clientAccountHash: 'hash2' },
+          ])
+          .mockResolvedValue([
+            {
+              id: 1,
+              sessionId: 10,
+              clientAccountHash: 'hash1',
+              clientAccountMask: '******8367',
+              clientName: 'M.AHMED',
+              clientNameNorm: 'm ahmed',
+              amount: 1200,
+              operationDate: new Date('2025-06-05T00:00:00.000Z'),
+              ccpAccount: '0021008367',
+              code: 1,
+              cleanReference: 'FAHMED250601202',
+              session: { lead: { wilaya: 'Setif', paymentCycleStartDay: 5 } },
+            },
+          ]),
+      },
+      globalRiskClient: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+    };
+    const utils = new UtilsService();
+    service = new CcpService(
+      prisma as any,
+      new CcpParserService(utils),
+      new RiskScoringService(),
+      utils,
+      {} as any,
+    );
+
+    const result = await service.rebuildGlobalRiskDataset('secret-admin-token');
+
+    expect(prisma.ccpLine.findMany).toHaveBeenNthCalledWith(1, {
+      select: { clientAccountHash: true },
+      distinct: ['clientAccountHash'],
+      orderBy: { clientAccountHash: 'asc' },
+    });
+    expect(result).toEqual({ rebuiltClients: 2 });
+    expect(prisma.globalRiskClient.create).toHaveBeenCalledTimes(2);
   });
 });

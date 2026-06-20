@@ -1,0 +1,2 @@
+ALTER TABLE "UploadLead"
+ADD COLUMN "paymentCycleStartDay" INTEGER NOT NULL DEFAULT 5;

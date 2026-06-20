@@ -8,6 +8,7 @@ export const UploadPage: React.FC = () => {
   const [showroomName, setShowroomName] = useState('');
   const [phone, setPhone] = useState('');
   const [wilaya, setWilaya] = useState('');
+  const [paymentCycleStartDay, setPaymentCycleStartDay] = useState(5);
   const [consent, setConsent] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,6 +61,11 @@ export const UploadPage: React.FC = () => {
       return;
     }
 
+    if (paymentCycleStartDay < 1 || paymentCycleStartDay > 28) {
+      setError('Le jour de début du prélèvement doit être entre 1 et 28');
+      return;
+    }
+
     if (selectedFiles.length === 0) {
       setError('Veuillez sélectionner au moins un fichier');
       return;
@@ -73,6 +79,7 @@ export const UploadPage: React.FC = () => {
         showroomName,
         phone || null,
         wilaya || null,
+        paymentCycleStartDay,
         consent,
         setUploadProgress,
       );
@@ -131,6 +138,22 @@ export const UploadPage: React.FC = () => {
                 onChange={e => setWilaya(e.target.value)}
                 placeholder="Ex: Alger"
               />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="paymentCycleStartDay">Jour de début du prélèvement</label>
+              <input
+                id="paymentCycleStartDay"
+                type="number"
+                min="1"
+                max="28"
+                value={paymentCycleStartDay}
+                onChange={e => setPaymentCycleStartDay(Number(e.target.value))}
+                required
+              />
+              <p className="file-hint">
+                Ex: 5 = du 05 au 04 du mois suivant, 17 = du 17 au 16.
+              </p>
             </div>
 
             <div className="form-group">

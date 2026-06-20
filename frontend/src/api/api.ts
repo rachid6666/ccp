@@ -39,6 +39,7 @@ export interface SessionResult {
   id: number;
   showroomName: string;
   wilaya: string | null;
+  paymentCycleStartDay: number;
   uploadedAt: string;
   fileCount: number;
   totalLines: number;
@@ -80,6 +81,7 @@ export const apiService = {
     showroomName: string,
     phone: string | null,
     wilaya: string | null,
+    paymentCycleStartDay: number,
     consentAccepted: boolean,
     onProgress?: (progress: number) => void,
   ): Promise<UploadResponse> {
@@ -88,6 +90,7 @@ export const apiService = {
     formData.append('showroomName', showroomName);
     if (phone) formData.append('phone', phone);
     if (wilaya) formData.append('wilaya', wilaya);
+    formData.append('paymentCycleStartDay', String(paymentCycleStartDay));
     formData.append('consentAccepted', String(consentAccepted));
 
     const response = await api.post('/ccp/upload', formData, {

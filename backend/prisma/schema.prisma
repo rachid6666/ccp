@@ -14,6 +14,7 @@ model UploadLead {
   showroomName      String
   phone             String?
   wilaya            String?
+  paymentCycleStartDay Int      @default(5)
   consentAccepted   Boolean
   consentAcceptedAt DateTime?
   createdAt         DateTime @default(now())

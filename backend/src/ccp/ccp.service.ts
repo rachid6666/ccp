@@ -78,6 +78,7 @@ export class CcpService {
     showroomName: string,
     phone: string | null,
     wilaya: string | null,
+    paymentCycleStartDay: number,
     consentAccepted: boolean,
   ): Promise<{
     accessToken: string;
@@ -92,6 +93,8 @@ export class CcpService {
     if (!consentAccepted) {
       throw new BadRequestException('Consent must be accepted');
     }
+    const validPaymentCycleStartDay =
+      this.validatePaymentCycleStartDay(paymentCycleStartDay);
 
     // Create lead
     const lead = await this.prisma.uploadLead.create({
@@ -99,6 +102,7 @@ export class CcpService {
         showroomName,
         phone: phone || null,
         wilaya: wilaya || null,
+        paymentCycleStartDay: validPaymentCycleStartDay,
         consentAccepted: true,
         consentAcceptedAt: new Date(),
       },
@@ -141,6 +145,7 @@ export class CcpService {
     let failedAmount = 0;
     let successCount = 0;
     let failedCount = 0;
+    const seenUploadLineKeys = new Set<string>();
 
     const clientStats = new Map<
       string,
@@ -150,12 +155,21 @@ export class CcpService {
         totalFailed: number;
         successLines: number;
         failedLines: number;
-        failedRefs: Set<string>;
-        failedMonths: Set<string>;
-        lastFailure: Date | null;
         name: string;
         nameNorm: string;
         mask: string;
+        paymentGroups: Map<
+          string,
+          {
+            failedAmount: number;
+            failedLines: number;
+            successLines: number;
+            cleanReference: string;
+            month: string;
+            paymentCycleStartDay: number;
+            lastFailureDate: Date | null;
+          }
+        >;
       }
     >();
 
@@ -195,6 +209,12 @@ export class CcpService {
           invalidLines++;
           fileInvalidLines++;
         } else {
+          const lineEventKey = this.lineEventKey(parsedLine);
+          if (seenUploadLineKeys.has(lineEventKey)) {
+            continue;
+          }
+          seenUploadLineKeys.add(lineEventKey);
+
           const ccpLine = {
             sessionId: session.id,
             fileId: uploadedFile.id,
@@ -236,29 +256,49 @@ export class CcpService {
               totalFailed: 0,
               successLines: 0,
               failedLines: 0,
-              failedRefs: new Set(),
-              failedMonths: new Set(),
-              lastFailure: null,
               name: parsedLine.clientName,
               nameNorm: parsedLine.clientNameNorm,
               mask: parsedLine.clientAccountMask,
+              paymentGroups: new Map(),
             });
           }
 
           const stats = clientStats.get(parsedLine.clientAccountHash)!;
           stats.totalAttempted += parsedLine.amount;
+          const paymentGroupKey = this.paymentGroupKey(
+            parsedLine,
+            validPaymentCycleStartDay,
+          );
+          if (!stats.paymentGroups.has(paymentGroupKey)) {
+            stats.paymentGroups.set(paymentGroupKey, {
+              failedAmount: 0,
+              failedLines: 0,
+              successLines: 0,
+              cleanReference: parsedLine.cleanReference,
+              month: this.paymentCycleMonth(
+                parsedLine.operationDate,
+                validPaymentCycleStartDay,
+              ),
+              paymentCycleStartDay: validPaymentCycleStartDay,
+              lastFailureDate: null,
+            });
+          }
+          const paymentGroup = stats.paymentGroups.get(paymentGroupKey)!;
 
           if (parsedLine.code === 0) {
             stats.totalCollected += parsedLine.amount;
             stats.successLines++;
+            paymentGroup.successLines++;
           } else {
             stats.totalFailed += parsedLine.amount;
             stats.failedLines++;
-            stats.failedRefs.add(parsedLine.cleanReference);
-            const month = parsedLine.operationDate.toISOString().substring(0, 7);
-            stats.failedMonths.add(month);
-            if (!stats.lastFailure || parsedLine.operationDate > stats.lastFailure) {
-              stats.lastFailure = parsedLine.operationDate;
+            paymentGroup.failedAmount += parsedLine.amount;
+            paymentGroup.failedLines++;
+            if (
+              !paymentGroup.lastFailureDate ||
+              parsedLine.operationDate > paymentGroup.lastFailureDate
+            ) {
+              paymentGroup.lastFailureDate = parsedLine.operationDate;
             }
           }
         }
@@ -294,7 +334,10 @@ export class CcpService {
     let blockCandidateCount = 0;
 
     for (const stats of clientStats.values()) {
-      if (stats.totalFailed > 0) {
+      const unsettledFailures = this.summarizeUnsettledPaymentGroups(
+        stats.paymentGroups,
+      );
+      if (unsettledFailures.totalFailedAmount > 0) {
         followUpClientCount++;
       }
 
@@ -303,17 +346,18 @@ export class CcpService {
         clientAccountMask: stats.mask,
         clientName: stats.name,
         clientNameNorm: stats.nameNorm,
-        totalAttemptedAmount: stats.totalAttempted,
+        totalAttemptedAmount:
+          stats.totalCollected + unsettledFailures.totalFailedAmount,
         totalCollectedAmount: stats.totalCollected,
-        totalFailedAmount: stats.totalFailed,
+        totalFailedAmount: unsettledFailures.totalFailedAmount,
         successLineCount: stats.successLines,
-        failedLineCount: stats.failedLines,
-        uniqueFailedReferences: stats.failedRefs.size,
-        failedMonthsCount: stats.failedMonths.size,
-        lastFailureDate: stats.lastFailure,
+        failedLineCount: unsettledFailures.failedLineCount,
+        uniqueFailedReferences: unsettledFailures.uniqueFailedReferences,
+        failedMonthsCount: unsettledFailures.failedMonthsCount,
+        lastFailureDate: unsettledFailures.lastFailureDate,
       };
 
-      if (stats.totalFailed > 0) {
+      if (unsettledFailures.totalFailedAmount > 0) {
         failedClientCount++;
       }
 
@@ -378,6 +422,7 @@ export class CcpService {
       id: session.id,
       showroomName: session.lead.showroomName,
       wilaya: session.lead.wilaya,
+      paymentCycleStartDay: session.lead.paymentCycleStartDay,
       uploadedAt: session.uploadedAt,
       fileCount: session.fileCount,
       totalLines: session.totalLines,
@@ -528,6 +573,24 @@ export class CcpService {
     return this.buildExcelHtml('Global Risk Clients', headers, rows);
   }
 
+  async rebuildGlobalRiskDataset(adminToken: string): Promise<{
+    rebuiltClients: number;
+  }> {
+    this.validateAdminExportToken(adminToken);
+
+    const clientHashes = await this.prisma.ccpLine.findMany({
+      select: { clientAccountHash: true },
+      distinct: ['clientAccountHash'],
+      orderBy: { clientAccountHash: 'asc' },
+    });
+
+    for (const { clientAccountHash } of clientHashes) {
+      await this.rebuildGlobalRiskClient(clientAccountHash, null);
+    }
+
+    return { rebuiltClients: clientHashes.length };
+  }
+
   private async getLatestCleanIdentityByHash(
     clientAccountHashes: string[],
   ): Promise<Map<string, { clientName: string; clientAccountMask: string }>> {
@@ -561,6 +624,106 @@ export class CcpService {
     }
 
     return identityByHash;
+  }
+
+  private summarizeUnsettledPaymentGroups(
+    paymentGroups: Map<
+      string,
+      {
+        failedAmount: number;
+        failedLines: number;
+        successLines: number;
+        cleanReference: string;
+        month: string;
+        paymentCycleStartDay: number;
+        lastFailureDate: Date | null;
+      }
+    >,
+  ): {
+    totalFailedAmount: number;
+    failedLineCount: number;
+    uniqueFailedReferences: number;
+    failedMonthsCount: number;
+    lastFailureDate: Date | null;
+  } {
+    let totalFailedAmount = 0;
+    let failedLineCount = 0;
+    let lastFailureDate: Date | null = null;
+    const failedReferences = new Set<string>();
+    const failedMonths = new Set<string>();
+
+    for (const group of paymentGroups.values()) {
+      if (group.failedLines === 0 || group.successLines > 0) {
+        continue;
+      }
+
+      totalFailedAmount += group.failedAmount;
+      failedLineCount += group.failedLines;
+      failedReferences.add(group.cleanReference);
+      failedMonths.add(group.month);
+      if (
+        group.lastFailureDate &&
+        (!lastFailureDate || group.lastFailureDate > lastFailureDate)
+      ) {
+        lastFailureDate = group.lastFailureDate;
+      }
+    }
+
+    return {
+      totalFailedAmount,
+      failedLineCount,
+      uniqueFailedReferences: failedReferences.size,
+      failedMonthsCount: failedMonths.size,
+      lastFailureDate,
+    };
+  }
+
+  private paymentGroupKey(line: {
+    ccpAccount: string;
+    cleanReference: string;
+    operationDate: Date;
+  }, paymentCycleStartDay = 5): string {
+    return [
+      line.ccpAccount,
+      line.cleanReference,
+      paymentCycleStartDay,
+      this.paymentCycleMonth(line.operationDate, paymentCycleStartDay),
+    ].join('|');
+  }
+
+  private lineEventKey(line: {
+    clientAccountHash: string;
+    ccpAccount: string;
+    cleanReference: string;
+    operationDate: Date;
+    code: number;
+    amount: unknown;
+  }): string {
+    return [
+      line.clientAccountHash,
+      line.ccpAccount,
+      line.cleanReference,
+      line.operationDate.toISOString(),
+      line.code,
+      Number(line.amount).toFixed(2),
+    ].join('|');
+  }
+
+  private paymentCycleMonth(date: Date, paymentCycleStartDay = 5): string {
+    const cycleDate = new Date(date);
+    if (cycleDate.getUTCDate() < paymentCycleStartDay) {
+      cycleDate.setUTCMonth(cycleDate.getUTCMonth() - 1);
+    }
+    return cycleDate.toISOString().substring(0, 7);
+  }
+
+  private validatePaymentCycleStartDay(value: number): number {
+    if (!Number.isInteger(value) || value < 1 || value > 28) {
+      throw new BadRequestException(
+        'Payment cycle start day must be a whole number between 1 and 28',
+      );
+    }
+    return value;
   }
 
   private isMissingExportIdentity(value: string | null | undefined): boolean {
@@ -705,12 +868,21 @@ export class CcpService {
         totalFailed: number;
         successLines: number;
         failedLines: number;
-        failedRefs: Set<string>;
-        failedMonths: Set<string>;
-        lastFailure: Date | null;
         name: string;
         nameNorm: string;
         mask: string;
+        paymentGroups: Map<
+          string,
+          {
+            failedAmount: number;
+            failedLines: number;
+            successLines: number;
+            cleanReference: string;
+            month: string;
+            paymentCycleStartDay: number;
+            lastFailureDate: Date | null;
+          }
+        >;
       }
     >,
     wilaya: string | null,
@@ -744,20 +916,32 @@ export class CcpService {
       where: { clientAccountHash },
     });
 
-    let totalAttemptedAmount = 0;
     let totalCollectedAmount = 0;
-    let totalFailedAmount = 0;
     let successLineCount = 0;
-    let failedLineCount = 0;
-    const failedReferences = new Set<string>();
-    const failedMonths = new Set<string>();
+    const paymentGroups = new Map<
+      string,
+      {
+        failedAmount: number;
+        failedLines: number;
+        successLines: number;
+        cleanReference: string;
+        month: string;
+        paymentCycleStartDay: number;
+        lastFailureDate: Date | null;
+      }
+    >();
     const sessionIds = new Set<number>();
     const wilayaSet = new Set<string>(existing?.seenInWilayas ?? []);
-    let lastFailureDate: Date | null = null;
+    const seenLineEventKeys = new Set<string>();
 
     for (const line of lines) {
+      const lineEventKey = this.lineEventKey(line);
+      if (seenLineEventKeys.has(lineEventKey)) {
+        continue;
+      }
+      seenLineEventKeys.add(lineEventKey);
+
       const amount = Number(line.amount);
-      totalAttemptedAmount += amount;
       sessionIds.add(line.sessionId);
 
       const lineWilaya = line.session?.lead?.wilaya;
@@ -765,16 +949,40 @@ export class CcpService {
         wilayaSet.add(lineWilaya.trim());
       }
 
+      const linePaymentCycleStartDay =
+        line.session?.lead?.paymentCycleStartDay ?? 5;
+      const paymentGroupKey = this.paymentGroupKey(
+        line,
+        linePaymentCycleStartDay,
+      );
+      if (!paymentGroups.has(paymentGroupKey)) {
+        paymentGroups.set(paymentGroupKey, {
+          failedAmount: 0,
+          failedLines: 0,
+          successLines: 0,
+          cleanReference: line.cleanReference,
+          month: this.paymentCycleMonth(
+            line.operationDate,
+            linePaymentCycleStartDay,
+          ),
+          paymentCycleStartDay: linePaymentCycleStartDay,
+          lastFailureDate: null,
+        });
+      }
+      const paymentGroup = paymentGroups.get(paymentGroupKey)!;
+
       if (line.code === 0) {
         totalCollectedAmount += amount;
         successLineCount++;
+        paymentGroup.successLines++;
       } else if (line.code === 1) {
-        totalFailedAmount += amount;
-        failedLineCount++;
-        failedReferences.add(line.cleanReference);
-        failedMonths.add(line.operationDate.toISOString().substring(0, 7));
-        if (!lastFailureDate || line.operationDate > lastFailureDate) {
-          lastFailureDate = line.operationDate;
+        paymentGroup.failedAmount += amount;
+        paymentGroup.failedLines++;
+        if (
+          !paymentGroup.lastFailureDate ||
+          line.operationDate > paymentGroup.lastFailureDate
+        ) {
+          paymentGroup.lastFailureDate = line.operationDate;
         }
       }
     }
@@ -786,19 +994,22 @@ export class CcpService {
     const latestLine = lines[lines.length - 1];
     const firstSeenAt = existing?.firstSeenAt ?? new Date();
     const now = new Date();
+    const unsettledFailures =
+      this.summarizeUnsettledPaymentGroups(paymentGroups);
     const riskData = {
       clientAccountHash,
       clientAccountMask: latestLine.clientAccountMask,
       clientName: latestLine.clientName,
       clientNameNorm: latestLine.clientNameNorm,
-      totalAttemptedAmount,
+      totalAttemptedAmount:
+        totalCollectedAmount + unsettledFailures.totalFailedAmount,
       totalCollectedAmount,
-      totalFailedAmount,
+      totalFailedAmount: unsettledFailures.totalFailedAmount,
       successLineCount,
-      failedLineCount,
-      uniqueFailedReferences: failedReferences.size,
-      failedMonthsCount: failedMonths.size,
-      lastFailureDate,
+      failedLineCount: unsettledFailures.failedLineCount,
+      uniqueFailedReferences: unsettledFailures.uniqueFailedReferences,
+      failedMonthsCount: unsettledFailures.failedMonthsCount,
+      lastFailureDate: unsettledFailures.lastFailureDate,
     };
     const risk = this.riskScoring.calculateRiskScore(riskData);
 
@@ -811,14 +1022,14 @@ export class CcpService {
       lastSeenAt: now,
       seenInSessions: sessionIds.size,
       seenInWilayas: Array.from(wilayaSet),
-      totalAttemptedAmount: new Decimal(totalAttemptedAmount),
+      totalAttemptedAmount: new Decimal(riskData.totalAttemptedAmount),
       totalCollectedAmount: new Decimal(totalCollectedAmount),
-      totalFailedAmount: new Decimal(totalFailedAmount),
+      totalFailedAmount: new Decimal(unsettledFailures.totalFailedAmount),
       successLineCount,
-      failedLineCount,
-      uniqueFailedReferences: failedReferences.size,
-      failedMonthsCount: failedMonths.size,
-      lastFailureDate,
+      failedLineCount: unsettledFailures.failedLineCount,
+      uniqueFailedReferences: unsettledFailures.uniqueFailedReferences,
+      failedMonthsCount: unsettledFailures.failedMonthsCount,
+      lastFailureDate: unsettledFailures.lastFailureDate,
       riskScore: risk.score,
       riskLevel: risk.level,
     };
